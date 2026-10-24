@@ -71,7 +71,9 @@ struct bpf_map {
 	atomic_t refcnt;
 	atomic_t usercnt;
 	struct work_struct work;
+#ifndef __GENKSYMS__
 	char name[BPF_OBJ_NAME_LEN];
+#endif
 };
 
 /* function argument constraints */
@@ -173,16 +175,25 @@ bpf_ctx_record_field_size(struct bpf_insn_access_aux *aux, u32 size)
 
 struct bpf_verifier_ops {
 	/* return eBPF function prototype for verification */
+#ifdef __GENKSYMS__
+	const struct bpf_func_proto *(*get_func_proto)(enum bpf_func_id func_id);
+#else
 	const struct bpf_func_proto *
 	(*get_func_proto)(enum bpf_func_id func_id,
 			  const struct bpf_prog *prog);
+#endif
 
 	/* return true if 'size' wide access at offset 'off' within bpf_context
 	 * with 'type' (read or write) is allowed
 	 */
+#ifdef __GENKSYMS__
+	bool (*is_valid_access)(int off, int size, enum bpf_access_type type,
+				struct bpf_insn_access_aux *info);
+#else
 	bool (*is_valid_access)(int off, int size, enum bpf_access_type type,
 				const struct bpf_prog *prog,
 				struct bpf_insn_access_aux *info);
+#endif
 	int (*gen_prologue)(struct bpf_insn *insn, bool direct_write,
 			    const struct bpf_prog *prog);
 	u32 (*convert_ctx_access)(enum bpf_access_type type,
@@ -218,9 +229,11 @@ struct bpf_prog_aux {
 #ifdef CONFIG_SECURITY
 	void *security;
 #endif
+#ifndef __GENKSYMS__
 	u64 load_time; /* ns since boottime */
 	char name[BPF_OBJ_NAME_LEN];
 	struct bpf_dev_offload *offload;
+#endif
 	union {
 		struct work_struct work;
 		struct rcu_head	rcu;

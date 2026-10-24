@@ -780,6 +780,7 @@ enum tc_setup_type {
 /* These structures hold the attributes of bpf state that are being passed
  * to the netdevice through the bpf op.
  */
+#ifndef __GENKSYMS__
 enum bpf_netdev_command {
 	/* Set or clear a bpf program used in the earliest stages of packet
 	 * rx. The prog will have been loaded as BPF_PROG_TYPE_XDP. The callee
@@ -800,10 +801,12 @@ enum bpf_netdev_command {
 	BPF_OFFLOAD_TRANSLATE,
 	BPF_OFFLOAD_DESTROY,
 };
+#endif
 
 struct bpf_ext_analyzer_ops;
 struct netlink_ext_ack;
 
+#ifndef __GENKSYMS__
 struct netdev_bpf {
 	enum bpf_netdev_command command;
 	union {
@@ -829,6 +832,30 @@ struct netdev_bpf {
 		} offload;
 	};
 };
+#endif
+
+#ifdef __GENKSYMS__
+/* Pre-backport definitions, kept so symbol CRCs stay compatible with stock modules */
+enum xdp_netdev_command {
+	XDP_SETUP_PROG,
+	XDP_SETUP_PROG_HW,
+	XDP_QUERY_PROG,
+};
+struct netdev_xdp {
+	enum xdp_netdev_command command;
+	union {
+		struct {
+			u32 flags;
+			struct bpf_prog *prog;
+			struct netlink_ext_ack *extack;
+		};
+		struct {
+			u8 prog_attached;
+			u32 prog_id;
+		};
+	};
+};
+#endif
 
 #ifdef CONFIG_XFRM_OFFLOAD
 struct xfrmdev_ops {
@@ -1322,8 +1349,13 @@ struct net_device_ops {
 						       struct sk_buff *skb);
 	void			(*ndo_set_rx_headroom)(struct net_device *dev,
 						       int needed_headroom);
+#ifdef __GENKSYMS__
+	int			(*ndo_xdp)(struct net_device *dev,
+					   struct netdev_xdp *xdp);
+#else
 	int			(*ndo_bpf)(struct net_device *dev,
 					   struct netdev_bpf *bpf);
+#endif
 	int			(*ndo_xdp_xmit)(struct net_device *dev,
 						struct xdp_buff *xdp);
 	void			(*ndo_xdp_flush)(struct net_device *dev);
@@ -3352,10 +3384,18 @@ struct sk_buff *validate_xmit_skb_list(struct sk_buff *skb, struct net_device *d
 struct sk_buff *dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev,
 				    struct netdev_queue *txq, int *ret);
 
+#ifdef __GENKSYMS__
+typedef int (*xdp_op_t)(struct net_device *dev, struct netdev_xdp *xdp);
+#else
 typedef int (*bpf_op_t)(struct net_device *dev, struct netdev_bpf *bpf);
+#endif
 int dev_change_xdp_fd(struct net_device *dev, struct netlink_ext_ack *extack,
 		      int fd, u32 flags);
+#ifdef __GENKSYMS__
+u8 __dev_xdp_attached(struct net_device *dev, xdp_op_t xdp_op, u32 *prog_id);
+#else
 u8 __dev_xdp_attached(struct net_device *dev, bpf_op_t xdp_op, u32 *prog_id);
+#endif
 
 int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 int dev_forward_skb(struct net_device *dev, struct sk_buff *skb);

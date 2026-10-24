@@ -8,6 +8,11 @@
 #ifndef _UAPI__LINUX_BPF_H__
 #define _UAPI__LINUX_BPF_H__
 
+#ifdef __GENKSYMS__
+/* Pre-backport UAPI, kept so symbol CRCs stay compatible with stock modules */
+#include <linux/bpf_uapi_genksyms.h>
+#else
+
 #include <linux/types.h>
 #include <linux/bpf_common.h>
 
@@ -1102,4 +1107,5 @@ enum {
 #define TCP_BPF_IW		1001	/* Set TCP initial congestion window */
 #define TCP_BPF_SNDCWND_CLAMP	1002	/* Set sndcwnd_clamp */
 
+#endif /* __GENKSYMS__ */
 #endif /* _UAPI__LINUX_BPF_H__ */

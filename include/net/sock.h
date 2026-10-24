@@ -1034,9 +1034,11 @@ static inline void sk_prot_clear_nulls(struct sock *sk, int size)
 struct proto {
 	void			(*close)(struct sock *sk,
 					long timeout);
+#ifndef __GENKSYMS__
 	int			(*pre_connect)(struct sock *sk,
 					struct sockaddr *uaddr,
 					int addr_len);
+#endif
 	int			(*connect)(struct sock *sk,
 					struct sockaddr *uaddr,
 					int addr_len);
