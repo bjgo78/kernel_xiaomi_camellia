@@ -237,6 +237,40 @@ static const char *btf_name_by_offset(const struct btf *btf, u32 offset)
 		return "(invalid-name-offset)";
 }
 
+/* Local log helpers: this 4.14 verifier buffers its log in kernel memory,
+ * while BTF writes its log straight to the user buffer.
+ */
+#define BTF_TMP_LOG_SIZE	1024
+
+static bool bpf_verifier_log_needed(const struct bpf_verifier_log *log)
+{
+	return log->level && log->ubuf && !bpf_verifier_log_full(log);
+}
+
+static void bpf_verifier_vlog(struct bpf_verifier_log *log, const char *fmt,
+			      va_list args)
+{
+	unsigned int n;
+	char *kbuf;
+
+	kbuf = kmalloc(BTF_TMP_LOG_SIZE, GFP_KERNEL | __GFP_NOWARN);
+	if (!kbuf) {
+		log->ubuf = NULL;
+		return;
+	}
+
+	n = vscnprintf(kbuf, BTF_TMP_LOG_SIZE, fmt, args);
+	n = min(log->len_total - log->len_used - 1, n);
+	kbuf[n] = '\0';
+
+	if (!copy_to_user(log->ubuf + log->len_used, kbuf, n + 1))
+		log->len_used += n;
+	else
+		log->ubuf = NULL;
+
+	kfree(kbuf);
+}
+
 __printf(2, 3) static void __btf_verifier_log(struct bpf_verifier_log *log,
 					      const char *fmt, ...)
 {
