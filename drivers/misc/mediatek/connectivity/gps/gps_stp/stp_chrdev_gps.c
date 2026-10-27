@@ -1503,7 +1503,17 @@ static void GPS_exit(void)
 
 int mtk_wcn_stpgps_drv_init(void)
 {
-	return GPS_init();
+	static bool initialized;
+	int ret;
+
+	if (initialized)
+		return 0;
+
+	ret = GPS_init();
+	if (!ret)
+		initialized = true;
+
+	return ret;
 }
 EXPORT_SYMBOL(mtk_wcn_stpgps_drv_init);
 
