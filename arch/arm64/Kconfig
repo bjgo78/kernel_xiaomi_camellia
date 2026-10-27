@@ -1246,6 +1246,21 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
 	  Space separated list of names of dtbs to append when
 	  building a concatenated Image.gz-dtb.
 
+config BUILD_ARM64_DTB_OVERLAY_IMAGE
+	bool "Build device tree overlays"
+	depends on OF
+	help
+	  Build the device tree overlays listed in
+	  BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES as .dtbo files
+	  together with the dtbs, for packing into dtbo.img.
+
+config BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES
+	string "Device tree overlay names"
+	depends on BUILD_ARM64_DTB_OVERLAY_IMAGE
+	help
+	  Space separated list of device tree overlays (without
+	  extension) to build, e.g. "mediatek/camellia".
+
 endmenu
 
 menu "Userspace binary formats"
