@@ -4,7 +4,7 @@
 ###############################################################################
 # Necessary Check
 
-CFG_FM_CHIP := mt6635
+CFG_FM_CHIP :=
 CFG_FM_PLAT := mt6631_6635
 
 ifneq ($(KERNEL_OUT),)
