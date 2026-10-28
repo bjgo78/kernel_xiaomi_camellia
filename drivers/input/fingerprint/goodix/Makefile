@@ -10,18 +10,18 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
+ccflags-y += -I$(srctree)/drivers/devfreq/
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
 subdir-ccflags-y += -I$(srctree)/drivers/spi/mediatek/$(MTK_PLATFORM)
 
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/teei/400/tz_driver/include
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/teei/400/common/include/
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/teei/$(CONFIG_MICROTRUST_TEE_VERSION)/tz_driver/include
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/teei/$(CONFIG_MICROTRUST_TEE_VERSION)/common/include/
 
 ifeq ($(CONFIG_TRUSTONIC_TEE_SUPPORT),y)
 subdir-ccflags-y += -I$(srctree)/drivers/spi/trustzone/spi/Tlspi/inc
 	include $(srctree)/drivers/misc/mediatek/gud/Makefile.include
 endif
 
-#obj-$(CONFIG_GOODIX_FINGERPRINT)	+= gf_spi_tee.o gf_spi_factory.o
-obj-y += gf_spi_tee.o gf_spi_factory.o
+obj-$(CONFIG_GOODIX_FINGERPRINT) += gf_spi_tee.o gf_spi_factory.o
 
 

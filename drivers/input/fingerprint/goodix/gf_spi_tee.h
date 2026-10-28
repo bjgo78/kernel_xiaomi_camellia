@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2013-2016, Shenzhen Huiding Technology Co., Ltd.
- * Copyright (C) 2021 XiaoMi, Inc.
  * All Rights Reserved.
  */
 #ifndef __GF_SPI_TEE_H
@@ -25,12 +24,10 @@
 #define DEBUG_LOG (2)
 
 /* debug log setting */
-u8 g_debug_level = DEBUG_LOG;
+extern u8 g_debug_level;
 
 #define gf_debug(level, fmt, args...) do { \
-			if (g_debug_level >= level) {\
 				pr_warn("[gf] " fmt, ##args); \
-			} \
 		} while (0)
 
 #define FUNC_ENTRY()  gf_debug(DEBUG_LOG, "%s, %d, enter\n", __func__, __LINE__)
@@ -48,6 +45,13 @@ u8 g_debug_level = DEBUG_LOG;
 #define GF_NAV_INPUT_LONG_PRESS		KEY_SEARCH
 #define GF_NAV_INPUT_HEAVY		KEY_CHAT
 
+#define GF_KEY_INPUT_HOME		KEY_SELECT
+#define GF_KEY_INPUT_MENU		KEY_MENU
+#define GF_KEY_INPUT_BACK		KEY_BACK
+#define GF_KEY_INPUT_POWER		KEY_POWER
+#define GF_KEY_INPUT_CAMERA		KEY_CAMERA
+#define GF_KEY_INPUT_KPENTER            KEY_KPENTER
+
 typedef enum gf_nav_event {
 	GF_NAV_NONE = 0,
 	GF_NAV_FINGER_UP,
@@ -64,12 +68,17 @@ typedef enum gf_nav_event {
 
 typedef enum gf_key_event {
 	GF_KEY_NONE = 0,
+	GF_KEY_HOME,
 	GF_KEY_POWER,
 	GF_KEY_MENU,
 	GF_KEY_BACK,
 	GF_KEY_CAMERA,
-	GF_KEY_HOME_DOUBLE_CLICK,
 } gf_key_event_t;
+
+struct gf_key {
+	enum gf_key_event key;
+	uint32_t value;   /* key down = 1, key up = 0 */
+};
 
 enum gf_netlink_cmd {
 	GF_NETLINK_TEST = 0,
@@ -140,6 +149,8 @@ typedef struct {
 #define GF_IOC_ENABLE_POWER		_IO(GF_IOC_MAGIC, 7)
 #define GF_IOC_DISABLE_POWER		_IO(GF_IOC_MAGIC, 8)
 
+#define GF_IOC_INPUT_KEY_EVENT		_IOW(GF_IOC_MAGIC, 9, struct gf_key)
+
 /* fp sensor has change to sleep mode while screen off */
 #define GF_IOC_ENTER_SLEEP_MODE		_IO(GF_IOC_MAGIC, 10)
 #define GF_IOC_GET_FW_INFO		_IOR(GF_IOC_MAGIC, 11, u8)
@@ -161,7 +172,6 @@ struct gf_device {
 	struct device *device;
 	struct class *class;
 	struct spi_device *spi;
-	struct platform_device *pldev;
 	int device_count;
 #ifndef CONFIG_SPI_MT65XX
 	struct mt_chip_conf spi_mcc;
@@ -203,13 +213,11 @@ struct gf_device {
 	u32 irq_num;
 	u8  need_update;
 	u32 irq;
-	u8 fb_black;
-	u8 wait_finger_down;
 
 #ifdef CONFIG_OF
 	struct pinctrl *pinctrl_gpios;
 	struct pinctrl_state *pins_irq;
-	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow;
+	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow, *pins_spi_cs_high, *pins_spi_cs_low, *pins_spi_mode;
 	struct pinctrl_state *pins_reset_high, *pins_reset_low;
 #endif
 };
@@ -217,7 +225,7 @@ struct gf_device {
 /**************************REE SPI******************************/
 
 #ifndef SUPPORT_REE_SPI
-#define SUPPORT_REE_SPI	
+#define SUPPORT_REE_SPI
 //#define SUPPORT_REE_OSWEGO
 #endif
 
@@ -231,6 +239,8 @@ struct gf_device {
 #define ERR_PREPARE_FAIL 113
 
 /**********************function defination**********************/
+extern bool goodix_fp_exist;
+extern bool fpc1022_fp_exist;
 #ifndef CONFIG_SPI_MT65XX
 void gf_spi_setup_conf_ree(struct gf_device *gf_dev, u32 speed, enum spi_transfer_mode mode);
 #endif
@@ -238,7 +248,7 @@ int gf_spi_read_bytes_ree(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *
 int gf_spi_write_bytes_ree(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *tx_buf);
 int gf_spi_read_byte_ree(struct gf_device *gf_dev, u16 addr, u8 *value);
 int gf_spi_write_byte_ree(struct gf_device *gf_dev, u16 addr, u8 value);
-int gf_ioctl_transfer_raw_cmd(struct gf_device *gf_dev, unsigned long arg,unsigned int bufsiz);
+int gf_ioctl_transfer_raw_cmd(struct gf_device *gf_dev, unsigned long arg, unsigned int bufsiz);
 #ifndef CONFIG_SPI_MT65XX
 int  gf_ioctl_spi_init_cfg_cmd(struct mt_chip_conf *mcc, unsigned long arg);
 #endif

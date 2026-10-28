@@ -1,2 +1,6 @@
-obj-$(CONFIG_INPUT_FINGERPRINT_FPC1542) += fpc1542/
-obj-y += goodix/
+#
+# Makefile for all kinds of Fingerprint
+#
+
+obj-$(CONFIG_GOODIX_FINGERPRINT) += goodix/
+obj-$(CONFIG_FPC_FINGERPRINT) += fpc/

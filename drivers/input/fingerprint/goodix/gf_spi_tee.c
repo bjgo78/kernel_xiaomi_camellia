@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2013-2016, Shenzhen Huiding Technology Co., Ltd.
- * Copyright (C) 2021 XiaoMi, Inc.
  * All Rights Reserved.
  */
 
@@ -15,7 +14,6 @@
 #include <linux/init.h>
 #include <asm/atomic.h>
 #include <linux/timer.h>
-#include <linux/input.h>
 #include "cpu_ctrl.h"
 
 #include "teei_fp.h"
@@ -46,14 +44,15 @@
 #include <net/sock.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spidev.h>
-#include <linux/platform_device.h>
-#include <drm/drm_bridge.h>
-#include <drm/drm_notifier_odm.h>
 
 /* MTK header */
 #ifndef CONFIG_SPI_MT65XX
 #include "mtk_spi.h"
 #include "mtk_spi_hal.h"
+#endif
+
+#ifdef CONFIG_HQ_SYSFS_SUPPORT
+#include <linux/hqsysfs.h>
 #endif
 
 /* there is no this file on standardized GPIO platform */
@@ -69,9 +68,7 @@
 #include "gf_spi_tee.h"
 #include  <linux/regulator/consumer.h>
 
-
-#define WAKELOCK_HOLD_TIME 2000	/* in ms */
-#define FP_UNLOCK_REJECTION_TIMEOUT (WAKELOCK_HOLD_TIME - 500) /*ms*/
+#define WAKELOCK_HOLD_TIME 2000 /* in ms */
 
 /**************************defination******************************/
 #define GF_DEV_NAME "goodix_fp"
@@ -85,8 +82,6 @@
 #define GF_NETLINK_ROUTE 29   /* for GF test temporary, need defined in include/uapi/linux/netlink.h */
 #define MAX_NL_MSG_LEN 16
 
-#define COMPATIBLE_NODE "mediatek,fpsensor_fp_eint"
-
 /*************************************************************/
 
 /* align=2, 2 bytes align */
@@ -98,12 +93,9 @@
 #ifdef CONFIG_SPI_MT65XX
 u32 gf_spi_speed = 1*1000000;
 #endif
-
-bool goodix_fp_exist = false;
-extern bool fpc1542_fp_exist;
-extern int mtk_drm_early_resume(int timeout);
-extern struct spi_device *spi_fingerprint;
-static struct gf_device goodix_dev;
+u8 g_debug_level;
+bool goodix_fp_exist;
+struct spi_device *spi_fingerprint;
 struct TEEC_UUID uuid_ta_gf = { 0x8888c03f, 0xc30c, 0x4dd0,
 	{ 0xa3, 0x19, 0xea, 0x29, 0x64, 0x3d, 0x4d, 0x4b } };
 
@@ -112,9 +104,11 @@ static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 
 static struct wakeup_source fp_wakesrc;
-static struct work_struct fp_display_work;
 
 static unsigned int bufsiz = (25 * 1024);
+
+struct regulator *ldo_fingerprint;
+
 module_param(bufsiz, uint, S_IRUGO);
 MODULE_PARM_DESC(bufsiz, "maximum data bytes for SPI message");
 
@@ -122,7 +116,7 @@ MODULE_PARM_DESC(bufsiz, "maximum data bytes for SPI message");
 static const struct of_device_id gf_of_match[] = {
 	//{ .compatible = "mediatek,fingerprint", },
 	//{ .compatible = "mediatek,goodix-fp", },
-	{ .compatible = "mediatek,goodix-fp", },
+	{ .compatible = "goodix,goodix-fp", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, gf_of_match);
@@ -130,11 +124,10 @@ MODULE_DEVICE_TABLE(of, gf_of_match);
 
 int gf_spi_read_bytes(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *rx_buf);
 
-struct regulator *buck;
 /* for netlink use */
-static int pid = 0;
+static int pid;
 
-static u8 g_vendor_id = 0;
+static u8 g_vendor_id;
 
 static ssize_t gf_debug_show(struct device *dev,
 			struct device_attribute *attr, char *buf);
@@ -221,41 +214,41 @@ static int gf_get_gpio_dts_info(struct gf_device *gf_dev)
 
 	gf_debug(DEBUG_LOG, "%s, from dts pinctrl\n", __func__);
 
-	node = of_find_compatible_node(NULL, NULL, "mediatek,fpsensor_fp_eint");
+	node = of_find_compatible_node(NULL, NULL, "mediatek,goodix-fp");
 	gf_debug(ERR_LOG, "[gf][goodix_test] %s node = %p\n", __func__, node);
 	if (node) {
 		virq = irq_of_parse_and_map(node, 0);
-		gf_debug(ERR_LOG, "[gf][goodix_test] %s virq = %d\n", __func__,
-			 virq);
+		gf_debug(ERR_LOG, "[gf][goodix_test] %s virq = %d\n", __func__, virq);
 #ifndef CONFIG_MTK_EIC
 		irq_set_irq_wake(virq, 1);
-		gf_debug(ERR_LOG,
-			 "[gf][goodix_test] %s CONFIG_MTK_EIC define\n",
-			 __func__);
+		gf_debug(ERR_LOG, "[gf][goodix_test] %s CONFIG_MTK_EIC define\n", __func__);
 #else
 		enable_irq_wake(virq);
-		gf_debug(ERR_LOG,
-			 "[gf][goodix_test] %s CONFIG_MTK_EIC not define\n",
-			 __func__);
+		gf_debug(ERR_LOG, "[gf][goodix_test] %s CONFIG_MTK_EIC not define\n", __func__);
 #endif
 		pdev = of_find_device_by_node(node);
 		if (pdev) {
 			gf_dev->pinctrl_gpios = devm_pinctrl_get(&pdev->dev);
 			if (IS_ERR(gf_dev->pinctrl_gpios)) {
 				ret = PTR_ERR(gf_dev->pinctrl_gpios);
-				gf_debug(ERR_LOG,
-					 "%s can't find fingerprint pinctrl\n",
-					 __func__);
+				gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl\n", __func__);
 				return ret;
 			}
 		} else {
-			gf_debug(ERR_LOG, "%s platform device is null\n",
-				 __func__);
+			gf_debug(ERR_LOG, "%s platform device is null\n", __func__);
 		}
 	} else {
 		gf_debug(ERR_LOG, "%s device node is null\n", __func__);
 	}
 
+	gf_dev->pins_irq = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "goodix_irq");
+	if (IS_ERR(gf_dev->pins_irq)) {
+		ret = PTR_ERR(gf_dev->pins_irq);
+		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl irq\n", __func__);
+		//return ret;
+	}
+
+	gf_debug(ERR_LOG, "[gf][goodix_test] %s goodix_irq found\n", __func__);
 #ifdef SUPPORT_REE_OSWEGO
 	gf_dev->pins_miso_spi = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "miso_spi");
 	if (IS_ERR(gf_dev->pins_miso_spi)) {
@@ -276,32 +269,37 @@ static int gf_get_gpio_dts_info(struct gf_device *gf_dev)
 		return ret;
 	}
 #endif
-	gf_dev->pins_reset_high = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "fpsensor_goodix_rst_high");
+	gf_dev->pins_reset_high = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "reset_high");
 	if (IS_ERR(gf_dev->pins_reset_high)) {
 		ret = PTR_ERR(gf_dev->pins_reset_high);
 		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl reset_high\n", __func__);
 		return ret;
 	}
-	gf_dev->pins_reset_low = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "fpsensor_goodix_rst_low");
+	gf_dev->pins_reset_low = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "reset_low");
 	if (IS_ERR(gf_dev->pins_reset_low)) {
 		ret = PTR_ERR(gf_dev->pins_reset_low);
 		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl reset_low\n", __func__);
 		return ret;
 	}
+	gf_dev->pins_spi_mode = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "spi_mode");
+	if (IS_ERR(gf_dev->pins_spi_mode)) {
+		ret = PTR_ERR(gf_dev->pins_spi_mode);
+		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl spi_mode\n", __func__);
+		return ret;
+	}
+	pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_spi_mode);
 
 	gf_debug(DEBUG_LOG, "%s, get pinctrl success!\n", __func__);
-
 #endif
 	return 0;
 }
 
 static int gf_get_sensor_dts_info(void)
 {
-/*
 	struct device_node *node = NULL;
 	int value;
 
-	node = of_find_compatible_node(NULL, NULL, "fpc,fpc_spi");
+	node = of_find_compatible_node(NULL, NULL, "goodix,goodix-fp");
 	if (node) {
 		of_property_read_u32(node, "netlink-event", &value);
 		gf_debug(DEBUG_LOG, "%s, get netlink event[%d] from dts\n", __func__, value);
@@ -309,7 +307,7 @@ static int gf_get_sensor_dts_info(void)
 		gf_debug(ERR_LOG, "%s failed to get device node!\n", __func__);
 		return -ENODEV;
 	}
-*/
+
 	return 0;
 }
 
@@ -317,50 +315,46 @@ static void gf_hw_power_enable(struct gf_device *gf_dev, u8 onoff)
 {
 	/* TODO: LDO configure */
 	static int enable = 1;
-	pr_err("%s\n",__func__);
-
+	pr_err("%s\n", __func__);
 	if (onoff && enable) {
-		pr_err("%s %d now reset sensor,pull low\n",__func__, __LINE__);
-		/* TODO:  set power  according to actual situation  */
+		pr_err("%s %d now reset sensor,pull low\n", __func__, __LINE__);
+	/* TODO:  set power  according to actual situation  */
 		enable = 0;
 		#ifdef CONFIG_OF
 		pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_reset_low);
-		mdelay(15);	
-		pr_err("%s %d now reset sensor pull high\n",__func__, __LINE__);
+		mdelay(15);
+		pr_err("%s %d now reset sensor pull high\n", __func__, __LINE__);
 		pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_reset_high);
 		#endif
-	}
-	else if (!onoff && !enable) {
-		pr_err("%s %d do nothing\n",__func__, __LINE__);
+	} else if (!onoff && !enable) {
+		pr_err("%s %d do nothing\n", __func__, __LINE__);
 		enable = 1;
 	}
 }
 
 static void gf_spi_clk_enable(struct gf_device *gf_dev, u8 bonoff)
 {
-	static int count = 0;
-	gf_dev->spi = goodix_dev.spi;
-
-	pr_err("%s enter. line:%d. \n", __func__,__LINE__);
+	static int count;
+	pr_err("%s line:%d try to control spi clk\n", __func__, __LINE__);
 #ifdef CONFIG_MTK_CLKMGR
-        if (bonoff && (count == 0)) {
-                gf_debug(DEBUG_LOG, "%s, start to enable spi clk && count = %d.\n", __func__, count);
-                enable_clock(MT_CG_PERI_SPI0, "spi");
-                count = 1;
-        } else if ((count > 0) && (bonoff == 0)) {
-                gf_debug(DEBUG_LOG, "%s, start to disable spi clk&& count = %d.\n", __func__, count);
-                disable_clock(MT_CG_PERI_SPI0, "spi");
-                count = 0;
-    }
+	if (bonoff && (count == 0)) {
+		gf_debug(DEBUG_LOG, "%s, start to enable spi clk && count = %d.\n", __func__, count);
+		enable_clock(MT_CG_PERI_SPI0, "spi");
+		count = 1;
+	} else if ((count > 0) && (bonoff == 0)) {
+		gf_debug(DEBUG_LOG, "%s, start to disable spi clk&& count = %d.\n", __func__, count);
+		disable_clock(MT_CG_PERI_SPI0, "spi");
+		count = 0;
+	}
 #else
 
 
 	if (bonoff && (count == 0)) {
-		pr_err("%s line:%d enable spi clk\n", __func__,__LINE__);
+		pr_err("%s line:%d enable spi clk\n", __func__, __LINE__);
 		mt_spi_enable_master_clk(gf_dev->spi);
 		count = 1;
 	} else if ((count > 0) && (bonoff == 0)) {
-		pr_err("%s line:%d disable spi clk\n", __func__,__LINE__);
+		pr_err("%s line:%d disable spi clk\n", __func__, __LINE__);
 		mt_spi_disable_master_clk(gf_dev->spi);
 		count = 0;
 	}
@@ -377,7 +371,9 @@ static void gf_irq_gpio_cfg(struct gf_device *gf_dev)
 #ifdef CONFIG_OF
 	struct device_node *node;
 
-	node = of_find_compatible_node(NULL, NULL, "mediatek,fpsensor_fp_eint");
+	//pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_irirq);
+
+	node = of_find_compatible_node(NULL, NULL, "mediatek,goodix-fp");
 	if (node) {
 		gf_dev->irq_num = irq_of_parse_and_map(node, 0);
 		gf_debug(INFO_LOG, "%s, gf_irq = %d\n", __func__, gf_dev->irq_num);
@@ -564,7 +560,7 @@ static void gf_late_resume(struct early_suspend *handler)
 #else
 
 static int gf_fb_notifier_callback(struct notifier_block *self,
-				   unsigned long event, void *data)
+			unsigned long event, void *data)
 {
 	struct gf_device *gf_dev = NULL;
 	struct fb_event *evdata = data;
@@ -573,41 +569,32 @@ static int gf_fb_notifier_callback(struct notifier_block *self,
 	FUNC_ENTRY();
 
 	/* If we aren't interested in this event, skip it immediately ... */
-	if (event != DRM_EVENT_BLANK)
-	{
+	if (event != FB_EVENT_BLANK /* FB_EARLY_EVENT_BLANK */)
 		return 0;
-	}
 
 	gf_dev = container_of(self, struct gf_device, notifier);
+	blank = *(int *)evdata->data;
 
-        if (evdata && evdata->data && event == DRM_EVENT_BLANK && gf_dev) {
-		blank = *(int *)evdata->data;
+	gf_debug(INFO_LOG, "[%s] : enter, blank=0x%x\n", __func__, blank);
 
-		pr_info("[XMFP]: [%s] : enter, blank=0x%x\n", __func__, blank);
+	switch (blank) {
+	case FB_BLANK_UNBLANK:
+		gf_debug(INFO_LOG, "[%s] : lcd on notify\n", __func__);
+		gf_netlink_send(gf_dev, GF_NETLINK_SCREEN_ON);
+		break;
 
-		switch (blank) {
-		case DRM_BLANK_UNBLANK:
-			gf_dev->fb_black = 0;
-			pr_info("[XMFP]: [%s] : lcd on notify\n", __func__);
-			gf_netlink_send(gf_dev, GF_NETLINK_SCREEN_ON);
-			break;
+	case FB_BLANK_POWERDOWN:
+		gf_debug(INFO_LOG, "[%s] : lcd off notify\n", __func__);
+		gf_netlink_send(gf_dev, GF_NETLINK_SCREEN_OFF);
+		break;
 
-		case DRM_BLANK_POWERDOWN:
-			gf_dev->fb_black = 1;
-			gf_dev->wait_finger_down = true;
-			pr_info("[XMFP]: [%s] : lcd off notify\n", __func__);
-			gf_netlink_send(gf_dev, GF_NETLINK_SCREEN_OFF);
-			break;
-
-		default:
-			pr_info("[XMFP]: [%s] : other notifier, ignore\n", __func__);
-			break;
-		}
+	default:
+		gf_debug(INFO_LOG, "[%s] : other notifier, ignore\n", __func__);
+		break;
 	}
-
 	FUNC_EXIT();
 	return retval;
-}//goodix_fb_state_chg_callback
+}
 
 #endif //CONFIG_HAS_EARLYSUSPEND
 
@@ -618,8 +605,8 @@ static ssize_t gf_read(struct file *filp, char __user *buf, size_t count, loff_t
 {
 	int retval = 0;
 
-#ifdef  SUPPORT_REE_SPI
-#ifdef  SUPPORT_REE_OSWEGO
+#ifdef SUPPORT_REE_SPI
+#ifdef SUPPORT_REE_OSWEGO
 	struct gf_device *gf_dev = NULL;
 	u8 status;
 	u8 *transfer_buf = NULL;
@@ -705,13 +692,6 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	gf_netlink_send(gf_dev, GF_NETLINK_IRQ);
 	gf_dev->sig_count++;
 
-        /*vdd by regultor,and not contrled by gpio. so don't need device_available*/
-        if ((gf_dev->wait_finger_down == true) && (gf_dev->fb_black == 1)) {
-		pr_info("[XMFP]: %s enter fingerdown & fb_black then schedule_work\n", __func__);
-		gf_dev->wait_finger_down = false;
-		schedule_work(&fp_display_work);
-	}
-
 	FUNC_EXIT();
 	return IRQ_HANDLED;
 }
@@ -720,8 +700,10 @@ static irqreturn_t gf_irq(int irq, void *handle)
 static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct gf_device *gf_dev = NULL;
+	struct gf_key gf_key;
 	gf_nav_event_t nav_event = GF_NAV_NONE;
 	uint32_t nav_input = 0;
+	uint32_t key_input = 0;
 #ifdef SUPPORT_REE_SPI
 #ifdef SUPPORT_REE_OSWEGO
 	struct gf_ioc_transfer ioc;
@@ -772,14 +754,13 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		gf_irq_gpio_cfg(gf_dev);
 		retval = request_threaded_irq(gf_dev->irq, NULL, gf_irq,
-				IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_SUSPEND, "goodix_fp_irq", gf_dev);
+				IRQF_TRIGGER_RISING | IRQF_ONESHOT, "goodix_fp_irq", gf_dev);
 		if (!retval)
 			gf_debug(INFO_LOG, "%s irq thread request success!\n", __func__);
 		else
 			gf_debug(ERR_LOG, "%s irq thread request failed, retval=%d\n", __func__, retval);
 
 		gf_dev->irq_count = 1;
-		enable_irq_wake(gf_dev->irq);
 		gf_disable_irq(gf_dev);
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
@@ -791,7 +772,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #else
 		/* register screen on/off callback */
 		gf_dev->notifier.notifier_call = gf_fb_notifier_callback;
-		drm_register_client(&gf_dev->notifier);
+		fb_register_client(&gf_dev->notifier);
 #endif
 
 		gf_dev->sig_count = 0;
@@ -825,7 +806,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (gf_dev->early_suspend.suspend)
 			unregister_early_suspend(&gf_dev->early_suspend);
 #else
-		drm_unregister_client(&gf_dev->notifier);
+		fb_unregister_client(&gf_dev->notifier);
 #endif
 
 		gf_dev->system_status = 0;
@@ -867,6 +848,40 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		gf_hw_power_enable(gf_dev, 0);
 		break;
 
+	case GF_IOC_INPUT_KEY_EVENT:
+		if (copy_from_user(&gf_key, (struct gf_key *)arg, sizeof(struct gf_key))) {
+			gf_debug(ERR_LOG, "Failed to copy input key event from user to kernel\n");
+			retval = -EFAULT;
+			break;
+		}
+
+		if (GF_KEY_HOME == gf_key.key) {
+			key_input = GF_KEY_INPUT_HOME;
+		} else if (GF_KEY_POWER == gf_key.key) {
+			key_input = GF_KEY_INPUT_HOME;
+		} else if (GF_KEY_CAMERA == gf_key.key) {
+			key_input = GF_KEY_INPUT_CAMERA;
+		} else {
+			/* add special key define */
+			key_input = gf_key.key;
+		}
+		gf_debug(INFO_LOG, "%s: received key event[%d], key=%d, value=%d\n",
+				__func__, key_input, gf_key.key, gf_key.value);
+
+		if ((GF_KEY_POWER == gf_key.key || GF_KEY_CAMERA == gf_key.key) && (gf_key.value == 1)) {
+			input_report_key(gf_dev->input, key_input, 1);
+			input_sync(gf_dev->input);
+			input_report_key(gf_dev->input, key_input, 0);
+			input_sync(gf_dev->input);
+		}
+
+		if (GF_KEY_HOME == gf_key.key) {
+		    input_report_key(gf_dev->input, key_input, gf_key.value);
+		    input_sync(gf_dev->input);
+		}
+
+		break;
+
 	case GF_IOC_NAV_EVENT:
 	    gf_debug(ERR_LOG, "nav event");
 		if (copy_from_user(&nav_event, (gf_nav_event_t *)arg, sizeof(gf_nav_event_t))) {
@@ -876,52 +891,52 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		switch (nav_event) {
-		    case GF_NAV_FINGER_DOWN:
-		    gf_debug(ERR_LOG, "nav finger down");
+		case GF_NAV_FINGER_DOWN:
+			gf_debug(ERR_LOG, "nav finger down");
 			break;
 
-		    case GF_NAV_FINGER_UP:
-		    gf_debug(ERR_LOG, "nav finger up");
+		case GF_NAV_FINGER_UP:
+			gf_debug(ERR_LOG, "nav finger up");
 			break;
 
-		    case GF_NAV_DOWN:
+		case GF_NAV_DOWN:
 			nav_input = GF_NAV_INPUT_DOWN;
 			gf_debug(ERR_LOG, "nav down");
 			break;
 
-		    case GF_NAV_UP:
+		case GF_NAV_UP:
 			nav_input = GF_NAV_INPUT_UP;
 			gf_debug(ERR_LOG, "nav up");
 			break;
 
-		    case GF_NAV_LEFT:
+		case GF_NAV_LEFT:
 			nav_input = GF_NAV_INPUT_LEFT;
 			gf_debug(ERR_LOG, "nav left");
 			break;
 
-		    case GF_NAV_RIGHT:
+		case GF_NAV_RIGHT:
 			nav_input = GF_NAV_INPUT_RIGHT;
 			gf_debug(ERR_LOG, "nav right");
 			break;
 
-		    case GF_NAV_CLICK:
+		case GF_NAV_CLICK:
 			nav_input = GF_NAV_INPUT_CLICK;
 			gf_debug(ERR_LOG, "nav click");
 			break;
 
-		    case GF_NAV_HEAVY:
+		case GF_NAV_HEAVY:
 			nav_input = GF_NAV_INPUT_HEAVY;
 			break;
 
-		    case GF_NAV_LONG_PRESS:
+		case GF_NAV_LONG_PRESS:
 			nav_input = GF_NAV_INPUT_LONG_PRESS;
 			break;
 
-		    case GF_NAV_DOUBLE_CLICK:
+		case GF_NAV_DOUBLE_CLICK:
 			nav_input = GF_NAV_INPUT_DOUBLE_CLICK;
 			break;
 
-		    default:
+		default:
 			gf_debug(INFO_LOG, "%s: not support nav event nav_event: %d ======\n", __func__, nav_event);
 			break;
 		}
@@ -1154,7 +1169,7 @@ static ssize_t gf_debug_store(struct device *dev,
 	} else if (!strncmp(buf, "-13", 3)) {
 		gf_debug(INFO_LOG, "%s: parameter is -13, Vendor ID test --> 0x%x\n", __func__, g_vendor_id);
 		gf_spi_read_bytes(gf_dev, 0x0000, 4, rx_test);
-	printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__,rx_test[0],rx_test[1],rx_test[2],rx_test[3]);
+		printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__, rx_test[0], rx_test[1], rx_test[2], rx_test[3]);
 	} else {
 		gf_debug(ERR_LOG, "%s: wrong parameter!===============\n", __func__);
 	}
@@ -1171,10 +1186,6 @@ static int gf_open(struct inode *inode, struct file *filp)
 	int status = -ENXIO;
 
 	FUNC_ENTRY();
-	if (goodix_fp_exist == false) {
-		gf_debug(ERR_LOG, "%s, goodix_fp_exist is false.\n", __func__);
-		return status;
-	}
 	mutex_lock(&device_list_lock);
 	list_for_each_entry(gf_dev, &device_list, device_entry) {
 		if (gf_dev->devno == inode->i_rdev) {
@@ -1249,7 +1260,7 @@ void gf_spi_setup_conf_ree(struct gf_device *gf_dev, u32 speed, enum spi_transfe
 {
 	struct mt_chip_conf *mcc = &gf_dev->spi_mcc;
 
-	switch(speed) {
+	switch (speed) {
 	case 1:
 		/* set to 1MHz clock */
 		mcc->high_time = 50;
@@ -1571,7 +1582,7 @@ static int gf_check_9p_chip(struct gf_device *gf_dev)
 			gf_debug(INFO_LOG, "%s, 9p chip version check pass, time_out=%d\n", __func__, time_out);
 			return 0;
 		}
-	} while(time_out < 200);
+	} while (time_out < 200);
 
 	gf_debug(INFO_LOG, "%s, 9p chip version read failed, time_out=%d\n", __func__, time_out);
 	return -1;
@@ -1621,7 +1632,7 @@ static int gf_init_flash_fw(struct gf_device *gf_dev)
 
 	mdelay(80);
 	memset(tmp_buf, 0x00, 11);
-	gf_spi_read_bytes_ree(gf_dev, 0x8000, 10, tmp_buf); 
+	gf_spi_read_bytes_ree(gf_dev, 0x8000, 10, tmp_buf);
 	tmp_buf[6] = '\0';
 	gf_debug(INFO_LOG, "[%s], the product id is %s.\n", __func__, &tmp_buf[0]);
 	gf_debug(INFO_LOG, "[%s], the fw version is 0x%x, 0x%x, 0x%x.\n", __func__,
@@ -1679,43 +1690,43 @@ static const struct file_operations gf_fops = {
 /*-------------------------------------------------------------------------*/
 
 int gf_spi_read_bytes(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *rx_buf)
- {
-	 struct spi_message msg;
-	 struct spi_transfer *xfer = NULL;
-	 u8 *tmp_buf = NULL;
-	 u32 package, reminder, retry;
- 
-	 package = (data_len + 2) / 1024;
-	 reminder = (data_len + 2) % 1024;
- 
-	 if ((package > 0) && (reminder != 0)) {
-		 xfer = kzalloc(sizeof(*xfer) * 4, GFP_KERNEL);
-		 retry = 1;
-	 } else {
-		 xfer = kzalloc(sizeof(*xfer) * 2, GFP_KERNEL);
-		 retry = 0;
-	 }
-	 if (xfer == NULL) {
-		 gf_debug(ERR_LOG, "%s, no memory for SPI transfer\n", __func__);
-		 return -ENOMEM;
-	 }
- 
-	 tmp_buf = gf_dev->spi_buffer;
-	 
- #ifndef CONFIG_SPI_MT65XX
-	 /* switch to DMA mode if transfer length larger than 32 bytes */
-	 if ((data_len + 1) > 32) {
-		 gf_dev->spi_mcc.com_mod = DMA_TRANSFER;
-		 spi_setup(gf_dev->spi);
-	 }
+{
+	struct spi_message msg;
+	struct spi_transfer *xfer = NULL;
+	u8 *tmp_buf = NULL;
+	u32 package, reminder, retry;
+
+	package = (data_len + 2) / 1024;
+	reminder = (data_len + 2) % 1024;
+
+	if ((package > 0) && (reminder != 0)) {
+		xfer = kzalloc(sizeof(*xfer) * 4, GFP_KERNEL);
+		retry = 1;
+	} else {
+		xfer = kzalloc(sizeof(*xfer) * 2, GFP_KERNEL);
+		retry = 0;
+	}
+	if (xfer == NULL) {
+		gf_debug(ERR_LOG, "%s, no memory for SPI transfer\n", __func__);
+		return -ENOMEM;
+	}
+
+	tmp_buf = gf_dev->spi_buffer;
+
+#ifndef CONFIG_SPI_MT65XX
+	/* switch to DMA mode if transfer length larger than 32 bytes */
+	if ((data_len + 1) > 32) {
+		gf_dev->spi_mcc.com_mod = DMA_TRANSFER;
+		spi_setup(gf_dev->spi);
+	}
 #endif
 
-	 spi_message_init(&msg);
-	 *tmp_buf = 0xF0;
-	 *(tmp_buf + 1) = (u8)((addr >> 8) & 0xFF);
-	 *(tmp_buf + 2) = (u8)(addr & 0xFF);
-	 xfer[0].tx_buf = tmp_buf;
-	 xfer[0].len = 3;
+	spi_message_init(&msg);
+	*tmp_buf = 0xF0;
+	*(tmp_buf + 1) = (u8)((addr >> 8) & 0xFF);
+	*(tmp_buf + 2) = (u8)(addr & 0xFF);
+	xfer[0].tx_buf = tmp_buf;
+	xfer[0].len = 3;
 
 #ifdef CONFIG_SPI_MT65XX
 	xfer[0].speed_hz = gf_spi_speed;
@@ -1723,96 +1734,90 @@ int gf_spi_read_bytes(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *rx_b
 		__func__, __LINE__, xfer[0].speed_hz);
 #endif
 
-	 xfer[0].delay_usecs = 5;
-	 spi_message_add_tail(&xfer[0], &msg);
-	 spi_sync(gf_dev->spi, &msg);
- 
-	 spi_message_init(&msg);
-	 /* memset((tmp_buf + 4), 0x00, data_len + 1); */
-	 /* 4 bytes align */
-	 *(tmp_buf + 4) = 0xF1;
-	 xfer[1].tx_buf = tmp_buf + 4;
-	 xfer[1].rx_buf = tmp_buf + 4;
- 
-	 if (retry)
-		 xfer[1].len = package * 1024;
-	 else
-		 xfer[1].len = data_len + 1;
+	xfer[0].delay_usecs = 5;
+	spi_message_add_tail(&xfer[0], &msg);
+	spi_sync(gf_dev->spi, &msg);
+
+	spi_message_init(&msg);
+	/* memset((tmp_buf + 4), 0x00, data_len + 1); */
+	/* 4 bytes align */
+	*(tmp_buf + 4) = 0xF1;
+	xfer[1].tx_buf = tmp_buf + 4;
+	xfer[1].rx_buf = tmp_buf + 4;
+
+	if (retry)
+		xfer[1].len = package * 1024;
+	else
+		xfer[1].len = data_len + 1;
 
 #ifdef CONFIG_SPI_MT65XX
-		 xfer[1].speed_hz = gf_spi_speed;
+		xfer[1].speed_hz = gf_spi_speed;
 #endif
-	 xfer[1].delay_usecs = 5;
-	 spi_message_add_tail(&xfer[1], &msg);
-	 spi_sync(gf_dev->spi, &msg);
- 
-	 /* copy received data */
-	 if (retry)
-		 memcpy(rx_buf, (tmp_buf + 5), (package * 1024 - 1));
-	 else
-		 memcpy(rx_buf, (tmp_buf + 5), data_len);
- 
+	xfer[1].delay_usecs = 5;
+	spi_message_add_tail(&xfer[1], &msg);
+	spi_sync(gf_dev->spi, &msg);
+
+	/* copy received data */
+	if (retry)
+		memcpy(rx_buf, (tmp_buf + 5), (package * 1024 - 1));
+	else
+		memcpy(rx_buf, (tmp_buf + 5), data_len);
+
 	 /* send reminder SPI data */
-	 if (retry) {
-		 addr = addr + package * 1024 - 2;
-		 spi_message_init(&msg);
- 
-		 *tmp_buf = 0xF0;
-		 *(tmp_buf + 1) = (u8)((addr >> 8) & 0xFF);
-		 *(tmp_buf + 2) = (u8)(addr & 0xFF);
-		 xfer[2].tx_buf = tmp_buf;
-		 xfer[2].len = 3;
-#ifdef CONFIG_SPI_MT65XX
-		xfer[2].speed_hz = gf_spi_speed;
-#endif
-		 xfer[2].delay_usecs = 5;
-		 spi_message_add_tail(&xfer[2], &msg);
-		 spi_sync(gf_dev->spi, &msg);
- 
-		 spi_message_init(&msg);
-		 *(tmp_buf + 4) = 0xF1;
-		 xfer[3].tx_buf = tmp_buf + 4;
-		 xfer[3].rx_buf = tmp_buf + 4;
-		 xfer[3].len = reminder + 1;
-#ifdef CONFIG_SPI_MT65XX
-		xfer[2].speed_hz = gf_spi_speed;
-#endif
-		 xfer[3].delay_usecs = 5;
-		 spi_message_add_tail(&xfer[3], &msg);
-		 spi_sync(gf_dev->spi, &msg);
- 
-		 memcpy((rx_buf + package * 1024 - 1), (tmp_buf + 6), (reminder - 1));
-	 }
+	if (retry) {
+		addr = addr + package * 1024 - 2;
+		spi_message_init(&msg);
 
-#ifndef CONFIG_SPI_MT65XX 
+		*tmp_buf = 0xF0;
+		*(tmp_buf + 1) = (u8)((addr >> 8) & 0xFF);
+		*(tmp_buf + 2) = (u8)(addr & 0xFF);
+		xfer[2].tx_buf = tmp_buf;
+		xfer[2].len = 3;
+#ifdef CONFIG_SPI_MT65XX
+		xfer[2].speed_hz = gf_spi_speed;
+#endif
+		xfer[2].delay_usecs = 5;
+		spi_message_add_tail(&xfer[2], &msg);
+		spi_sync(gf_dev->spi, &msg);
+
+		spi_message_init(&msg);
+		*(tmp_buf + 4) = 0xF1;
+		xfer[3].tx_buf = tmp_buf + 4;
+		xfer[3].rx_buf = tmp_buf + 4;
+		xfer[3].len = reminder + 1;
+#ifdef CONFIG_SPI_MT65XX
+		xfer[2].speed_hz = gf_spi_speed;
+#endif
+		xfer[3].delay_usecs = 5;
+		spi_message_add_tail(&xfer[3], &msg);
+		spi_sync(gf_dev->spi, &msg);
+
+		memcpy((rx_buf + package * 1024 - 1), (tmp_buf + 6), (reminder - 1));
+	}
+
+#ifndef CONFIG_SPI_MT65XX
 	 /* restore to FIFO mode if has used DMA */
-	 if ((data_len + 1) > 32) {
-		 gf_dev->spi_mcc.com_mod = FIFO_TRANSFER;
-		 spi_setup(gf_dev->spi);
-	 }
+	if ((data_len + 1) > 32) {
+		gf_dev->spi_mcc.com_mod = FIFO_TRANSFER;
+		spi_setup(gf_dev->spi);
+	}
 #endif
-	 kfree(xfer);
-	 if (xfer != NULL)
-		 xfer = NULL;
- 
-	 return 0;
- }
+	kfree(xfer);
+	if (xfer != NULL)
+		xfer = NULL;
 
-static void unblank_work(struct work_struct *work)
-{
-	pr_info("[XMFP]: entry %s \n", __func__);
-	mtk_drm_early_resume(FP_UNLOCK_REJECTION_TIMEOUT);
+	return 0;
 }
 
 
-static int gf_probe(struct platform_device  *pdev);
-static int gf_remove(struct platform_device  *pdev);
+static int gf_probe(struct spi_device *spi);
+static int gf_remove(struct spi_device *spi);
 
 
-static struct platform_driver gf_platform_driver = {
+static struct spi_driver gf_spi_driver = {
 	.driver = {
 		.name = GF_DEV_NAME,
-		//.bus = &spi_bus_type,
+		.bus = &spi_bus_type,
 		.owner = THIS_MODULE,
 #ifdef CONFIG_OF
 		.of_match_table = gf_of_match,
@@ -1822,15 +1827,33 @@ static struct platform_driver gf_platform_driver = {
 	.remove = gf_remove,
 };
 
-static int gf_probe(struct platform_device  *pdev)
+
+static int gf_probe(struct spi_device *spi)
 {
-	struct gf_device *gf_dev = &goodix_dev;
-	gf_dev->device = &pdev->dev;
+	struct gf_device *gf_dev = NULL;
 	int status = -EINVAL;
+	unsigned char rx_test[10] = {0};
 
 	FUNC_ENTRY();
+	pr_err("%s() enter.\n", __func__);
+	/*
+	gpio_node = of_find_compatible_node(NULL, NULL, "mediatek,gpio");
+	if (!gpio_node)
+		goto err;
+	gpio_reg_base = of_iomap(gpio_node, 0);
+	mt_reg_sync_writel(0x110, gpio_reg_base + 0x334);
+	*/
 
-	INIT_WORK(&fp_display_work, unblank_work);
+	/* Allocate driver data */
+	gf_dev = kzalloc(sizeof(struct gf_device), GFP_KERNEL);
+	if (!gf_dev) {
+		status = -ENOMEM;
+		goto err;
+	}
+
+	spin_lock_init(&gf_dev->spi_lock);
+	mutex_init(&gf_dev->buf_lock);
+	mutex_init(&gf_dev->release_lock);
 
 	INIT_LIST_HEAD(&gf_dev->device_entry);
 
@@ -1838,20 +1861,18 @@ static int gf_probe(struct platform_device  *pdev)
 	gf_dev->probe_finish     = 0;
 	gf_dev->system_status    = 0;
 	gf_dev->need_update      = 0;
-	gf_dev->fb_black = 0;
-	gf_dev->wait_finger_down = false;
 
 	/*setup gf configurations.*/
 	gf_debug(INFO_LOG, "%s, Setting gf device configuration==========\n", __func__);
+
 	/* Initialize the driver data */
-	gf_dev->pldev = pdev;
-#if 0
+	gf_dev->spi = spi;
+
 	/* setup SPI parameters */
 	/* CPOL=CPHA=0, speed 1MHz */
 	gf_dev->spi->mode = SPI_MODE_0;
 	gf_dev->spi->bits_per_word = 8;
 	gf_dev->spi->max_speed_hz = 1 * 1000 * 1000;
-#endif
 #ifndef CONFIG_SPI_MT65XX
 	memcpy(&gf_dev->spi_mcc, &spi_ctrdata, sizeof(struct mt_chip_conf));
 	gf_dev->spi->controller_data = (void *)&gf_dev->spi_mcc;
@@ -1859,67 +1880,81 @@ static int gf_probe(struct platform_device  *pdev)
 	spi_setup(gf_dev->spi);
 #endif
 	gf_dev->irq = 0;
+	//spi_set_drvdata(spi, gf_dev);
 
-	buck = regulator_get(gf_dev->device, "VFP");
-	if (buck ==NULL) {
+	/* allocate buffer for SPI transfer */
+	gf_dev->spi_buffer = kzalloc(bufsiz, GFP_KERNEL);
+	if (gf_dev->spi_buffer == NULL) {
+		status = -ENOMEM;
+		goto err_buf;
+	}
+
+	ldo_fingerprint = regulator_get(&gf_dev->spi->dev, "VFP");
+	if (ldo_fingerprint  == NULL) {
 		gf_debug(INFO_LOG, "regulator_get fail");
 		goto err_buf;
 	}
-	status = regulator_set_voltage(buck, 3000000, 3000000);
+	status = regulator_set_voltage(ldo_fingerprint, 3000000, 3000000);
 	if (status < 0) {
-	    goto err_buf;
-	}
-	status = regulator_enable(buck);
-	if (status < 0) {
-		gf_debug(ERR_LOG, "%s, regulator_enable fail!!\n" , __func__);
 		goto err_buf;
 	}
-	
-	/* get gpio info from dts or defination */
+	status = regulator_enable(ldo_fingerprint);
+	if (status < 0) {
+		gf_debug(ERR_LOG, "%s, regulator_enable fail!!\n", __func__);
+		goto err_buf;
+	}
 
+	/* get gpio info from dts or defination */
+    // printk("goodix goto test switch miso pin mode\n");
 	gf_get_gpio_dts_info(gf_dev);
 
 	gf_get_sensor_dts_info();
 
+	//pr_err("%s() switch miso pin mode\n", __func__);
+	//pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_miso_spi);
+
 	/*enable the power*/
-	pr_err("%s %d now get dts info done!",__func__, __LINE__);
+	pr_err("%s %d now get dts info done!", __func__, __LINE__);
 	gf_hw_power_enable(gf_dev, 1);
 	gf_bypass_flash_gpio_cfg();
+	pr_err("%s %d now enable spi clk API", __func__, __LINE__);
+	gf_spi_clk_enable(gf_dev, 1);
+	pr_err("%s %d now enable spi clk Done", __func__, __LINE__);
+	/* check firmware Integrity */
+	//gf_debug(INFO_LOG, "%s, Sensor type : %s.\n", __func__, CONFIG_GOODIX_SENSOR_TYPE);
 
-#if 0
 	mdelay(1);
 	gf_spi_read_bytes(gf_dev, 0x0000, 4, rx_test);
-	printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__,rx_test[0],rx_test[1],rx_test[2],rx_test[3]);
-
-	if(((rx_test[0]!=0x07) || (rx_test[3]!=0x25)) && ((rx_test[0]!=0x08) || (rx_test[3]!=0x25)) && ((rx_test[0]!=0x10) || (rx_test[3]!=0x25)) )
-	{
-		goodix_fp_exist = false;
-		gf_debug(ERR_LOG, "%s, get goodix FP sensor chipID fail!!\n" , __func__);
-		//goto err_readid;
-		//workaround to solve two spi device
-		pr_err("%s cannot find the sensor,now exit\n", __func__);
-		spi_fingerprint = spi;
-		gf_hw_power_enable(gf_dev, 0);
-		gf_spi_clk_enable(gf_dev, 0);
-		kfree(gf_dev->spi_buffer);
-		mutex_destroy(&gf_dev->buf_lock);
-		mutex_destroy(&gf_dev->release_lock);
-		spi_set_drvdata(spi, NULL);
-		gf_dev->spi = NULL;
-		//kfree(gf_dev);
-		gf_dev = NULL;
-		return 0;
-
+	printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__, rx_test[0], rx_test[1], rx_test[2], rx_test[3]);
+	if (1) {
+		if (((rx_test[0] != 0x07) || (rx_test[3] != 0x25)) && ((rx_test[0] != 0x08) || (rx_test[3] != 0x25)) && ((rx_test[0] != 0x10) || (rx_test[3] != 0x25))) {
+			goodix_fp_exist = false;
+			gf_debug(ERR_LOG, "%s, get goodix FP sensor chipID fail!!\n", __func__);
+			//goto err_readid;
+			//workaround to solve two spi device
+			pr_err("%s cannot find the sensor,now exit\n", __func__);
+			if (gf_dev->pinctrl_gpios) {
+				devm_pinctrl_put(gf_dev->pinctrl_gpios);
+			}
+			spi_fingerprint = spi;
+			gf_hw_power_enable(gf_dev, 0);
+			gf_spi_clk_enable(gf_dev, 0);
+			kfree(gf_dev->spi_buffer);
+			mutex_destroy(&gf_dev->buf_lock);
+			mutex_destroy(&gf_dev->release_lock);
+			spi_set_drvdata(spi, NULL);
+			gf_dev->spi = NULL;
+			kfree(gf_dev);
+			gf_dev = NULL;
+			return 0;
+		} else {
+			goodix_fp_exist = true;
+			//set_fp_vendor(FP_VENDOR_GOODIX);
+			memcpy(&uuid_fp, &uuid_ta_gf, sizeof(struct TEEC_UUID));
+			pr_err("%s %d Goodix fingerprint sensor detected\n", __func__, __LINE__);
+			gf_debug(ERR_LOG, "[gf][goodix_test] %s, get chipid\n", __func__);
+		}
 	}
-	else { 
-		goodix_fp_exist = true;
-		//set_fp_vendor(FP_VENDOR_GOODIX);
-		memcpy(&uuid_fp , &uuid_ta_gf ,sizeof(struct TEEC_UUID));
-		pr_err("%s %d Goodix fingerprint sensor detected\n", __func__, __LINE__);
-		gf_debug(ERR_LOG, "[gf][goodix_test] %s, get chipid\n" , __func__);
-	}
-#endif
-
 #ifdef SUPPORT_REE_SPI
 #ifdef SUPPORT_REE_OSWEGO
 	{
@@ -1927,8 +1962,8 @@ static int gf_probe(struct platform_device  *pdev)
 		int sensor_num = 0;
 
 		sensor_num = sizeof(oswego_m_sensor_type) / sizeof(oswego_m_sensor_type[0]);
-		for(i = 0; i < sensor_num; i ++) {
-			if(strncmp(CONFIG_GOODIX_SENSOR_TYPE, oswego_m_sensor_type[i],
+		for (i = 0; i < sensor_num; i++) {
+			if (strncmp(CONFIG_GOODIX_SENSOR_TYPE, oswego_m_sensor_type[i],
 						strlen(oswego_m_sensor_type[i])) == 0) {
 				/* put miso high to select SPI transfer */
 				gf_miso_gpio_cfg(gf_dev, 1);
@@ -1971,7 +2006,7 @@ static int gf_probe(struct platform_device  *pdev)
 	}
 
 	/* create device */
-	gf_dev->device = device_create(gf_dev->class, &gf_dev->pldev->dev, gf_dev->devno, gf_dev, GF_DEV_NAME);
+	gf_dev->device = device_create(gf_dev->class, &spi->dev, gf_dev->devno, gf_dev, GF_DEV_NAME);
 	if (IS_ERR(gf_dev->device)) {
 		gf_debug(ERR_LOG, "%s, Failed to create device.\n", __func__);
 		status = -ENODEV;
@@ -1984,7 +2019,7 @@ static int gf_probe(struct platform_device  *pdev)
 	}
 
 	/* create sysfs */
-	status = sysfs_create_group(&gf_dev->pldev->dev.kobj, &gf_debug_attr_group);
+	status = sysfs_create_group(&spi->dev.kobj, &gf_debug_attr_group);
 	if (status) {
 		gf_debug(ERR_LOG, "%s, Failed to create sysfs file.\n", __func__);
 		status = -ENODEV;
@@ -2011,19 +2046,24 @@ static int gf_probe(struct platform_device  *pdev)
 	}
 
 	__set_bit(EV_KEY, gf_dev->input->evbit);
+	__set_bit(GF_KEY_INPUT_HOME, gf_dev->input->keybit);
+
+	__set_bit(GF_KEY_INPUT_MENU, gf_dev->input->keybit);
+	__set_bit(GF_KEY_INPUT_BACK, gf_dev->input->keybit);
+	__set_bit(GF_KEY_INPUT_POWER, gf_dev->input->keybit);
 
 	__set_bit(GF_NAV_INPUT_UP, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_DOWN, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_RIGHT, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_LEFT, gf_dev->input->keybit);
+	__set_bit(GF_KEY_INPUT_CAMERA, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_CLICK, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_DOUBLE_CLICK, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_LONG_PRESS, gf_dev->input->keybit);
 	__set_bit(GF_NAV_INPUT_HEAVY, gf_dev->input->keybit);
+	//__set_bit(GF_KEY_INPUT_KPENTER, gf_dev->input->keybit);
 
 	gf_dev->input->name = GF_INPUT_NAME;
-	gf_dev->input->id.vendor  = 0x0666;
-	gf_dev->input->id.product = 0x0888;
 	if (input_register_device(gf_dev->input)) {
 		gf_debug(ERR_LOG, "%s, Failed to register input device.\n", __func__);
 		status = -ENODEV;
@@ -2040,27 +2080,20 @@ static int gf_probe(struct platform_device  *pdev)
 		goto err_input;
 	}
 
+
 	wakeup_source_init(&fp_wakesrc, "fp_wakesrc");
 
 	gf_dev->probe_finish = 1;
 	gf_dev->is_sleep_mode = 0;
 	gf_debug(INFO_LOG, "%s probe finished\n", __func__);
-	pr_err("%s %d now disable spi clk API",__func__, __LINE__);
-	//gf_spi_clk_enable(gf_dev, 0);
+	pr_err("%s %d now disable spi clk API", __func__, __LINE__);
+	gf_spi_clk_enable(gf_dev, 0);
 
-/*
-                gf_irq_gpio_cfg(gf_dev);
-    		retval = request_threaded_irq(gf_dev->irq, NULL, gf_irq,
-				IRQF_TRIGGER_RISING | IRQF_ONESHOT, "goodix_fp_irq", gf_dev);
-		if (!retval)
-			gf_debug(INFO_LOG, "%s irq thread request success!\n", __func__);
-		else
-			gf_debug(ERR_LOG, "%s irq thread request failed, retval=%d\n", __func__, retval);
-
-		gf_dev->irq_count = 1;
-*/
-
-	gf_debug(ERR_LOG, "[gf][goodix_test] %s, probe success\n" , __func__);
+#ifdef CONFIG_HQ_SYSFS_SUPPORT
+	gf_debug(ERR_LOG, "%s hq_regiser_hw_info\n", __func__);
+	hq_regiser_hw_info(HWID_FP, "Goodix");
+#endif
+	gf_debug(ERR_LOG, "[gf][goodix_test] %s, probe success\n", __func__);
 	FUNC_EXIT();
 	return 0;
 
@@ -2074,7 +2107,7 @@ err_input:
 	cdev_del(&gf_dev->cdev);
 
 err_cdev:
-	sysfs_remove_group(&gf_dev->pldev->dev.kobj, &gf_debug_attr_group);
+	sysfs_remove_group(&spi->dev.kobj, &gf_debug_attr_group);
 
 err_sysfs:
 	device_destroy(gf_dev->class, gf_dev->devno);
@@ -2095,24 +2128,28 @@ err_fw:
 //err_readid:
 	pr_err("%s cannot find the sensor,now exit\n", __func__);
 	gf_hw_power_enable(gf_dev, 0);
-
+	gf_spi_clk_enable(gf_dev, 0);
+	kfree(gf_dev->spi_buffer);
 err_buf:
 	mutex_destroy(&gf_dev->buf_lock);
 	mutex_destroy(&gf_dev->release_lock);
-
+	//spi_set_drvdata(spi, NULL);
+	gf_dev->spi = NULL;
+	kfree(gf_dev);
 	gf_dev = NULL;
 err:
-	gf_debug(ERR_LOG, "[gf][goodix_test] %s, probe fail\n" , __func__);
+	//spi_unregister_driver(&gf_spi_driver);
+	gf_debug(ERR_LOG, "[gf][goodix_test] %s, probe fail\n", __func__);
 	FUNC_EXIT();
 	return status;
 }
 
-static int gf_remove(struct platform_device *pdev)
+static int gf_remove(struct spi_device *spi)
 {
-	struct device *dev = &pdev->dev;
-	struct gf_device *gf_dev = dev_get_drvdata(dev);
+	struct gf_device *gf_dev = spi_get_drvdata(spi);
 
 	FUNC_ENTRY();
+
 
 	wakeup_source_trash(&fp_wakesrc);
 	/* make sure ops on existing fds can abort cleanly */
@@ -2126,12 +2163,12 @@ static int gf_remove(struct platform_device *pdev)
 	if (gf_dev->early_suspend.suspend)
 		unregister_early_suspend(&gf_dev->early_suspend);
 #else
-	drm_unregister_client(&gf_dev->notifier);
+	fb_unregister_client(&gf_dev->notifier);
 #endif
 
 	mutex_lock(&gf_dev->release_lock);
 	if (gf_dev->input == NULL) {
-		//kfree(gf_dev);
+		kfree(gf_dev);
 		mutex_unlock(&gf_dev->release_lock);
 		FUNC_EXIT();
 		return 0;
@@ -2149,7 +2186,7 @@ static int gf_remove(struct platform_device *pdev)
 
 	gf_netlink_destroy(gf_dev);
 	cdev_del(&gf_dev->cdev);
-	sysfs_remove_group(&gf_dev->pldev->dev.kobj, &gf_debug_attr_group);
+	sysfs_remove_group(&spi->dev.kobj, &gf_debug_attr_group);
 	device_destroy(gf_dev->class, gf_dev->devno);
 	list_del(&gf_dev->device_entry);
 
@@ -2159,112 +2196,47 @@ static int gf_remove(struct platform_device *pdev)
 	gf_spi_clk_enable(gf_dev, 0);
 
 	spin_lock_irq(&gf_dev->spi_lock);
-	spi_set_drvdata(gf_dev->spi, NULL);
+	spi_set_drvdata(spi, NULL);
 	gf_dev->spi = NULL;
 	spin_unlock_irq(&gf_dev->spi_lock);
 
 	mutex_destroy(&gf_dev->buf_lock);
 	mutex_destroy(&gf_dev->release_lock);
 
+	kfree(gf_dev);
 	FUNC_EXIT();
 	return 0;
-}
-
-static int check_hwid(struct spi_device *spi)
-{
-	struct gf_device *gf_dev = &goodix_dev;
-	gf_dev->spi = spi;
-	int status = -EINVAL;
-	unsigned char rx_test[10] = {0};
-	unsigned int retry = 0;
-
-	spin_lock_init(&gf_dev->spi_lock);
-	mutex_init(&gf_dev->buf_lock);
-	mutex_init(&gf_dev->release_lock);
-
-	gf_dev->spi_buffer = kzalloc(bufsiz, GFP_KERNEL);
-	if (gf_dev->spi_buffer == NULL) {
-		status = -ENOMEM;
-		goto err_buf;
-	}
-	gf_spi_clk_enable(gf_dev, 1);
-
-	do {
-		retry ++;
-		gf_spi_read_bytes(gf_dev, 0x0000, 4, rx_test);
-		printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__,rx_test[0],rx_test[1],rx_test[2],rx_test[3]);
-
-		if(((rx_test[0]!=0x07) || (rx_test[3]!=0x25)) && ((rx_test[0]!=0x08) || (rx_test[3]!=0x25)) && ((rx_test[0]!=0x10) || (rx_test[3]!=0x25)) )
-		{
-			gf_debug(ERR_LOG, "%s, get goodix FP sensor chipID fail. retry = %d\n" , __func__, retry);
-			mdelay(2);
-		}
-		else { 
-			goodix_fp_exist = true;
-			//set_fp_vendor(FP_VENDOR_GOODIX);
-			memcpy(&uuid_fp , &uuid_ta_gf ,sizeof(struct TEEC_UUID));
-			pr_err("%s %d Goodix fingerprint sensor detected\n", __func__, __LINE__);
-			gf_spi_clk_enable(gf_dev, 0);
-			return 0;
-		}
-	} while (retry < 2);
-err_buf:
-	goodix_fp_exist = false;
-	pr_err("%s cannot find goodix sensor,now exit\n", __func__);
-	gf_hw_power_enable(gf_dev, 0);
-	gf_spi_clk_enable(gf_dev, 0);
-	kfree(gf_dev->spi_buffer);
-	mutex_destroy(&gf_dev->buf_lock);
-	mutex_destroy(&gf_dev->release_lock);
-
-	return -1;
 }
 
 /*-------------------------------------------------------------------------*/
 static int __init gf_init(void)
 {
 	int status = 0;
-
+	g_debug_level = DEBUG_LOG;
 	FUNC_ENTRY();
 	pr_err("%s %d\n", __func__, __LINE__);
-
-	if (fpc1542_fp_exist) {
+	/*
+	if (fpc1022_fp_exist) {
 		pr_err("%s FPC sensor has been detected, so exit Goodxi sensor detect.\n",__func__);
 		return -EINVAL;
 	}
-	if (0 != platform_driver_register(&gf_platform_driver)) {
-		pr_err(KERN_INFO "%s: register platform driver fail\n",
-		       __func__);
+	*/
+
+	status = spi_register_driver(&gf_spi_driver);
+	if (status < 0) {
+		gf_debug(ERR_LOG, "%s, Failed to register SPI driver.\n", __func__);
 		return -EINVAL;
-	} else {
-		pr_err(KERN_INFO "%s: register platform driver success\n",__func__);
-	}
-	if (spi_fingerprint == NULL) {
-		pr_err("%s Line:%d spi device is NULL,cannot spi transfer\n",
-			  __func__, __LINE__);
-	}
-	else {
-		status = check_hwid(spi_fingerprint);
-
-		if (status < 0) {
-			pr_err("%s: %d get chipid fail. now exit\n",
-				  __func__, __LINE__);
-			return -EINVAL;
-		}
-		goodix_fp_exist = true;
-		goodix_dev.spi = spi_fingerprint;
-
 	}
 
 	FUNC_EXIT();
-	return 0;
+	return status;
 }
 late_initcall(gf_init);
 
 static void __exit gf_exit(void)
 {
 	FUNC_ENTRY();
-	platform_driver_unregister(&gf_platform_driver);
+	spi_unregister_driver(&gf_spi_driver);
 	FUNC_EXIT();
 }
 module_exit(gf_exit);
@@ -2273,4 +2245,4 @@ module_exit(gf_exit);
 MODULE_AUTHOR("goodix");
 MODULE_DESCRIPTION("Goodix Fingerprint chip GF316M/GF318M/GF3118M/GF518M/GF5118M/GF516M/GF816M/GF3208/GF5206/GF5216/GF5208 TEE driver");
 MODULE_LICENSE("GPL");
-//MODULE_ALIAS("spi:gf_spi");
+MODULE_ALIAS("spi:gf_spi");
