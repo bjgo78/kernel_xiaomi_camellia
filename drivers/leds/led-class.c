@@ -22,6 +22,9 @@
 #include <linux/timer.h>
 #include <uapi/linux/uleds.h>
 #include "leds.h"
+/* BSP.LCM - 2021.3.17 - modify to add brightness_clone */
+#include <linux/notifier.h>
+/* BSP.LCM - 2021.3.17 - end to add brightness_clone */
 
 static struct class *leds_class;
 
@@ -65,45 +68,39 @@ unlock:
 }
 static DEVICE_ATTR_RW(brightness);
 
-extern int hbm_brightness_set(int level);
-extern int hbm_brightness_get(void);
-
-static ssize_t hbm_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct led_classdev *led_cdev = dev_get_drvdata(dev);
-	unsigned long state;
-	ssize_t ret;
-
-	mutex_lock(&led_cdev->led_access);
-
-	if (led_sysfs_is_disabled(led_cdev)) {
-		ret = -EBUSY;
-		goto unlock;
-	}
-
-	ret = kstrtoul(buf, 10, &state);
-	if (ret)
-		goto unlock;
-	hbm_brightness_set(state);
-
-	ret = size;
-unlock:
-	mutex_unlock(&led_cdev->led_access);
-	return ret;
-}
-
-static ssize_t hbm_show(struct device *dev,
+/* BSP.LCM - 2021.3.17 - modify to add brightness_clone */
+static ssize_t brightness_clone_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct led_classdev *led_cdev = dev_get_drvdata(dev);
 
-	int hbm_status;
-	hbm_status = hbm_brightness_get();
-	return sprintf(buf, "%u\n", hbm_status);
+	return sprintf(buf, "%u\n", led_cdev->brightness_clone);
 }
 
-static DEVICE_ATTR_RW(hbm);
+static ssize_t brightness_clone_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct led_classdev *led_cdev = dev_get_drvdata(dev);
+	unsigned long brightness;
+	ssize_t ret;
+	char *envp[2];
+
+	ret = kstrtoul(buf, 10, &brightness);
+	if (ret)
+		return ret;
+
+	led_cdev->brightness_clone = brightness;
+
+	envp[0] = "SOURCE=sysfs";
+	envp[1] = NULL;
+
+	kobject_uevent_env(&led_cdev->dev->kobj, KOBJ_CHANGE, envp);
+	sysfs_notify(&led_cdev->dev->kobj, NULL, "brightness_clone");
+
+	return count;
+}
+static DEVICE_ATTR_RW(brightness_clone);
+/* BSP.LCM - 2021.3.17 - end to add brightness_clone */
 
 static ssize_t max_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -125,10 +122,11 @@ static const struct attribute_group led_trigger_group = {
 };
 #endif
 
+/* BSP.LCM - 2021.3.17 - modify to add brightness_clone */
 static struct attribute *led_class_attrs[] = {
 	&dev_attr_brightness.attr,
 	&dev_attr_max_brightness.attr,
-	&dev_attr_hbm.attr,
+	&dev_attr_brightness_clone.attr,
 	NULL,
 };
 
@@ -214,7 +212,6 @@ void led_classdev_suspend(struct led_classdev *led_cdev)
 {
 	led_cdev->flags |= LED_SUSPENDED;
 	led_set_brightness_nopm(led_cdev, 0);
-	flush_work(&led_cdev->set_brightness_work);
 }
 EXPORT_SYMBOL_GPL(led_classdev_suspend);
 
