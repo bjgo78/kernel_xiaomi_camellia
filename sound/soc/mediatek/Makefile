@@ -138,3 +138,6 @@ obj-y += $(AUDIO_PLATFORM)/
 # AP include path
 subdir-ccflags-y += -Werror -I$(src)/$(AUDIO_PLATFORM)
 endif
+
+obj-$(CONFIG_SND_SOC_AW87559) += aw87559/
+obj-$(CONFIG_SND_SOC_FS16XX) += fs1815n/
