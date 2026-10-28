@@ -293,6 +293,19 @@ bool is_recovery_mode(void)
 	return false;
 }
 
+/*
+ * Run the in-kernel (recovery) gauge algorithm instead of handing work to
+ * the userspace fuelgauged daemon, which does not exist on non-Android
+ * systems.
+ */
+static bool fg_use_kernel_algo(void)
+{
+	if (IS_ENABLED(CONFIG_MTK_BATTERY_KERNEL_GAUGE) && !is_fg_disabled())
+		return true;
+
+	return is_recovery_mode();
+}
+
 bool is_fg_disabled(void)
 {
 	return gm.disableGM30;
@@ -1210,7 +1223,7 @@ static void dump_kernel_table(struct seq_file *m)
 
 	seq_puts(m, "\n");
 
-	if (is_recovery_mode() == false) {
+	if (fg_use_kernel_algo() == false) {
 		dump_daemon_table(m);
 	} else {
 
@@ -2027,7 +2040,7 @@ int wakeup_fg_algo(unsigned int flow_state)
 		return -1;
 	}
 
-	if (is_recovery_mode()) {
+	if (fg_use_kernel_algo()) {
 		wakeup_fg_algo_recovery(flow_state);
 		return 0;
 	}
@@ -2085,7 +2098,7 @@ int wakeup_fg_algo_cmd(unsigned int flow_state, int cmd, int para1)
 		return -1;
 	}
 
-	if (is_recovery_mode()) {
+	if (fg_use_kernel_algo()) {
 		wakeup_fg_algo_recovery(flow_state);
 		return 0;
 	}
@@ -2142,7 +2155,7 @@ int wakeup_fg_algo_atomic(unsigned int flow_state)
 		return -1;
 	}
 
-	if (is_recovery_mode()) {
+	if (fg_use_kernel_algo()) {
 		wakeup_fg_algo_recovery(flow_state);
 		return 0;
 	}
@@ -4650,7 +4663,7 @@ static int __init battery_probe(struct platform_device *dev)
 		IS_ENABLED(CONFIG_MTK_DISABLE_GAUGE)) {
 		bm_err("disable GM 3.0\n");
 		disable_fg();
-	} else if (is_recovery_mode())
+	} else if (fg_use_kernel_algo())
 		battery_recovery_init();
 
 	mtk_battery_last_init(dev);

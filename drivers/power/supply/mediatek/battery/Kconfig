@@ -18,6 +18,15 @@ config MTK_GAUGE_VERSION
 	  Select MTK Gauge Master version
 	  30: Gauge Master 3.0
 
+config MTK_BATTERY_KERNEL_GAUGE
+	bool "Use the in-kernel gauge algorithm in normal boot"
+	depends on MTK_GAUGE_VERSION = 30
+	default n
+	help
+	  Use the simplified in-kernel fuel gauge algorithm (normally only
+	  used in recovery mode) instead of the userspace fuelgauged
+	  daemon. Needed when running a non-Android userspace.
+
 config MTK_DISABLE_GAUGE
 	bool "disable Gauge Master 3.0"
 	default n
