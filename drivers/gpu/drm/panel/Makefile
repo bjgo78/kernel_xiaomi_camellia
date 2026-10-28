@@ -70,3 +70,9 @@ obj-$(CONFIG_DRM_PANEL_K16A_36_02_0A_VDO) += panel-k16a-36-02-0a-vdo.o
 obj-$(CONFIG_DRM_PANEL_K16A_42_02_0B_VDO) += panel-k16a-42-02-0b-vdo.o
 obj-$(CONFIG_DRM_PANEL_LCM_CUST_COMMON) += lcm_cust_common.o
 obj-$(CONFIG_DRM_PANEL_VIRTUAL_VDO) += panel-virtual-default-vdo.o
+
+obj-$(CONFIG_DRM_PANEL_NT36672D_TIANMA_VDO) += panel-nt36672d-tianma-fhdp-dsi-vdo-90hz.o
+obj-$(CONFIG_DRM_PANEL_NT36672C_TIANMA_VDO) += panel-nt36672c-tianma-fhdp-dsi-vdo-90hz.o
+obj-$(CONFIG_DRM_PANEL_NT36672C_TRULY_VDO) += panel-nt36672c-truly-fhdp-dsi-vdo-90hz.o
+obj-$(CONFIG_DRM_PANEL_FT8722_TIANMA_VDO) += panel-ft8722-tianma-fhdp-dsi-vdo-90hz.o
+obj-$(CONFIG_DRM_PANEL_NT36672C_TRULY2_VDO) += panel-nt36672c-truly2-fhdp-dsi-vdo-90hz.o
