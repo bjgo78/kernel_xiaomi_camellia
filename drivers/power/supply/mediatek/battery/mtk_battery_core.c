@@ -80,11 +80,12 @@
 #include <mtk_battery_table.h>
 #include "simulator_kernel.h"
 #endif
+/* BSP.Charger - 2020.11.09 - enable battery id adc channel - start */
+#include <linux/of_platform.h>
+#include <linux/iio/consumer.h>
+/* BSP.Charger - 2020.11.09 - enable battery id adc channel - end */
 
-#include <linux/hardware_info.h>
 
-#define    MTK_GET_BATTERY_ID_BY_AUTH
-static char* battery_name[] = {"S98016_SWD_4V45_5000mAh","S98016_CMX_4V45_5000mAh", "BATTERY_NOT_DEFAULT",};
 
 /* ============================================================ */
 /* global variable */
@@ -642,51 +643,35 @@ void fgauge_get_profile_id(void)
 	id_volt = auxadc_voltage * 1500 / 4096;
 	bm_err("[%s]battery_id_voltage is %d\n", __func__, id_volt);
 
+	/* BSP.Charge - 2020.11.09 - Add battery node */
+	gm.battery_id_voltage = id_volt;
+
+	/* BSP.Charge - 2020.11.09 - Using high and low threshold */
 	if ((sizeof(g_battery_id_voltage) /
-		sizeof(int)) != TOTAL_BATTERY_NUMBER) {
-		bm_debug("[%s]error! voltage range incorrect!\n",
+		sizeof(int)) != (2 * TOTAL_BATTERY_NUMBER)) {
+		bm_err("[%s]error! voltage range incorrect!\n",
 			__func__);
 		return;
 	}
 
+	/* BSP.Charge - 2020.11.09 - Using high and low threshold */
+	gm.battery_id = TOTAL_BATTERY_NUMBER - 1;
 	for (id = 0; id < TOTAL_BATTERY_NUMBER; id++) {
-		if (id_volt < g_battery_id_voltage[id]) {
+		if (id_volt >= g_battery_id_voltage[id][0] &&
+			id_volt < g_battery_id_voltage[id][1]) {
 			gm.battery_id = id;
 			break;
-		} else if (g_battery_id_voltage[id] == -1) {
-			gm.battery_id = TOTAL_BATTERY_NUMBER - 1;
 		}
 	}
 
-	bm_debug("[%s]Battery id (%d)\n",
+	bm_err("[%s]Battery id (%d), Battery id voltage (%d)\n",
 		__func__,
-		gm.battery_id);
+		gm.battery_id, gm.battery_id_voltage);
 }
 #elif defined(MTK_GET_BATTERY_ID_BY_GPIO)
 void fgauge_get_profile_id(void)
 {
 	gm.battery_id = 0;
-}
-#elif defined(MTK_GET_BATTERY_ID_BY_AUTH)
-void fgauge_get_profile_id(void)
-{
-	union power_supply_propval pval = {0, };
-	struct power_supply *batt_verify;
-
-	batt_verify = power_supply_get_by_name("batt_verify");
-	if (!batt_verify) {
-		bm_err("Battery id wait\n");
-		gm.battery_id = 2;
-	} else {
-		power_supply_get_property(batt_verify, POWER_SUPPLY_PROP_MI_BATTERY_ID, &pval);
-		if (pval.intval == 0x57)
-			gm.battery_id = 0;
-		else if (pval.intval == 0x47)
-			gm.battery_id = 1;
-		else
-			gm.battery_id = 2;
-		bm_err("Battery id=(%d) mi_batt_id:%d\n",gm.battery_id, pval.intval);
-	}
 }
 #else
 void fgauge_get_profile_id(void)
@@ -708,8 +693,6 @@ void fg_custom_init_from_header(void)
 	int i, j;
 
 	fgauge_get_profile_id();
-
-	hardwareinfo_set_prop(HARDWARE_BATTERY_ID, battery_name[gm.battery_id]);
 
 	fg_cust_data.versionID1 = FG_DAEMON_CMD_FROM_USER_NUMBER;
 	fg_cust_data.versionID2 = sizeof(fg_cust_data);
@@ -1274,7 +1257,6 @@ static void fg_custom_part_ntc_table(const struct device_node *np,
 #endif
 }
 
-bool mtk_shutdown_delay_enable;
 void fg_custom_init_from_dts(struct platform_device *dev)
 {
 	struct device_node *np = dev->dev.of_node;
@@ -1288,7 +1270,6 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 
 	bm_err("%s\n", __func__);
 
-	mtk_shutdown_delay_enable = of_property_read_bool(np, "shutdown-delay-enable");
 	fg_read_dts_val(np, "MULTI_BATTERY", &(multi_battery), 1);
 	fg_read_dts_val(np, "ACTIVE_TABLE", &(active_table), 1);
 
@@ -2039,11 +2020,10 @@ void notify_fg_dlpt_sd(void)
 	wakeup_fg_algo(FG_INTR_DLPT_SD);
 }
 
-bool enable_notify_shutdown;
 void notify_fg_shutdown(void)
 {
 	bm_err("[%s]\n", __func__);
-	enable_notify_shutdown = true;
+	wakeup_fg_algo(FG_INTR_SHUTDOWN);
 }
 
 void notify_fg_chr_full(void)

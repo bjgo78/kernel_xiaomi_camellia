@@ -163,24 +163,6 @@ config CHARGER_RT9759
 	  direct charge
 	  It depends on config MTK_CHARGER
 
-config CHARGER_SC8551
-	bool "SC8551 Divider Charger Driver"
-	depends on MTK_CHARGER
-	help
-	  Say Y here to enable support of sc8551 divider charger
-	  It is mainly used as divider charger for
-	  direct charge
-	  It depends on config MTK_CHARGER
-
-config CHARGER_LN8000
-	bool "LN8000 Divider Charger Driver"
-	depends on MTK_CHARGER
-	help
-	  Say Y here to enable support of ln8000 divider charger
-	  It is mainly used as divider charger for
-	  direct charge
-	  It depends on config MTK_CHARGER
-
 config RT_PROP_CHGALGO
 	bool "Richtek Proprietary Charging Algorithm"
 	help
@@ -213,6 +195,22 @@ config CHARGER_BQ25601
 	  It depends on config MTK_SMART_BATTERY
 	  and config MTK_SWCHR_SUPPORT
 	  Set to Yes if BQ25601 is used.
+
+config CHARGER_BQ25890
+	bool "CHARGER_BQ25890"
+	help
+	  This is to enable MediaTek supports to BQ25890.
+	  It depends on config MTK_SMART_BATTERY
+	  and config MTK_SWCHR_SUPPORT
+	  Set to Yes if BQ25890 is used.
+
+config CHARGER_SGM41511
+	bool "CHARGER_SGM41511"
+	help
+	  This is to enable MediaTek supports to SGM41511.
+	  It depends on config MTK_SMART_BATTERY
+	  and config MTK_SWCHR_SUPPORT
+	  Set to Yes if SGM41511 is used.
 
 config LOAD_SWITCH_RT9750
 	bool "Load Switch Driver for Richtek RT9750"

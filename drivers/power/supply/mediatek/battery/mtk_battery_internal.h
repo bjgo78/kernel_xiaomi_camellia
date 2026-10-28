@@ -669,6 +669,14 @@ struct battery_data {
 	int BAT_batt_temp;
 };
 
+/* BSP.Charge - 2020.12.01 - Add bms start */
+struct bms_data {
+	struct power_supply_desc psd;
+	struct power_supply *psy;
+	struct power_supply_config cfg;
+};
+/* BSP.Charge - 2020.12.01 - Add bms end */
+
 struct BAT_EC_Struct {
 	int fixed_temp_en;
 	int fixed_temp_value;
@@ -786,6 +794,8 @@ struct mtk_battery {
 
 /*custom related*/
 	int battery_id;
+	/* BSP.Charge - 2020.11.09 - Add battery node */
+	int battery_id_voltage;
 
 	struct zcv_filter zcvf;
 
@@ -944,7 +954,6 @@ struct mtk_battery {
 	struct battery_temperature_table rbat;
 
 	struct fgd_cmd_param_t_custom fg_data;
-	bool charging_call_state;
 };
 
 

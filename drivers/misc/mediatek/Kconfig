@@ -474,5 +474,11 @@ source "drivers/misc/mediatek/hdmi/Kconfig"
 source "drivers/misc/mediatek/otp/Kconfig"
 source "drivers/misc/mediatek/sda/Kconfig"
 
+config MTK_SOFT_HVDCP_2
+	bool "mtk_soft_hvdcp_2"
+	default n
+	help
+	Select if you want to enable 18W charging.
+
 endmenu    # Misc
 

@@ -128,20 +128,15 @@ static enum power_supply_property battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
-	POWER_SUPPLY_PROP_SOC_DECIMAL,
-	POWER_SUPPLY_PROP_SOC_DECIMAL_RATE,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-	POWER_SUPPLY_PROP_BATTERY_VOLTAGE,
-	POWER_SUPPLY_PROP_BATTERY_TEMP,
-	POWER_SUPPLY_PROP_RESISTANCE_ID,
-	POWER_SUPPLY_PROP_BATT_ID_UPDATE,
-	POWER_SUPPLY_PROP_SHUTDOWN_DELAY,
-	POWER_SUPPLY_PROP_CHARGER_TEMP,
-	POWER_SUPPLY_PROP_CHARGE_TYPE,
+	/* BSP.Charge - 2020.11.09 - Add battery node - start */
+	POWER_SUPPLY_PROP_BATTERY_ID_VOLTAGE,
+	POWER_SUPPLY_PROP_BATTERY_ID,
+	POWER_SUPPLY_PROP_BATTERY_VENDOR,
+	POWER_SUPPLY_PROP_INPUT_SUSPEND,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
-	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
-	POWER_SUPPLY_PROP_RESISTANCE,
+	/* BSP.Charge - 2020.11.09 - Add battery node - end */
 };
 
 /* weak function */
@@ -426,88 +421,55 @@ int check_cap_level(int uisoc)
 		return POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN;
 }
 
-void battery_update_psd(struct battery_data *bat_data)
+/* BSP.Charge - 2020.12.01 - Add bms start */
+static int bms_get_property(struct power_supply *psy,
+	enum power_supply_property psp,
+	union power_supply_propval *val)
 {
-	bat_data->BAT_batt_vol = battery_get_bat_voltage();
-	bat_data->BAT_batt_temp = battery_get_bat_temperature();
-}
-
-static int mtk_get_prop_soc_decimal_rate(int *val)
-{
-	static int mtk_soc_decimal_rate[24] = {0,11,10,11,20,11,30,11,40,11,50,11,60,11,70,7,80,7,90,3,95,2,99,1};
-
-	static int *dec_rate_seq = &mtk_soc_decimal_rate[0];
-	static int dec_rate_len = 24;
-
-	int i, soc = 0;
-
-	soc = fg_cust_data.ui_old_soc / 100;
-
-	for (i = 0; i < dec_rate_len; i += 2) {
-		if (soc < dec_rate_seq[i]) {
-			*val = dec_rate_seq[i - 1];
-			return soc;
-		}
+/* BSP.Charge - 2020.03.04 - update bms start */
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		val->intval = gm.algo_qmax * gm.aging_factor / 100;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		val->intval = 5000000;
+		break;
+	case POWER_SUPPLY_PROP_RESISTANCE:
+		val->intval = 130000;
+		break;
+/* BSP.Charge - 2020.03.04 - update bms end */
+	case POWER_SUPPLY_PROP_CYCLE_COUNT:
+		val->intval = gm.bat_cycle;
+		break;
+	default:
+		return -EINVAL;
 	}
-
-	*val = dec_rate_seq[dec_rate_len - 1];
-
-	return soc;
-}
-
-static int mtk_get_prop_soc_decimal(int *val)
-{
-	*val = fg_cust_data.ui_old_soc % 100;
-	pr_err("real_soc =%d\n",fg_cust_data.ui_old_soc);
 
 	return 0;
 }
 
-int get_charger_pump_temp(void)
+static enum power_supply_property bms_properties[] = {
+	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_RESISTANCE,
+	POWER_SUPPLY_PROP_CYCLE_COUNT,
+};
+
+struct bms_data bms_main = {
+	.psd = {
+		.name = "bms",
+		.type = POWER_SUPPLY_TYPE_BMS,
+		.properties = bms_properties,
+		.num_properties = ARRAY_SIZE(bms_properties),
+		.get_property = bms_get_property,
+	},
+};
+/* BSP.Charge - 2020.12.01 - Add bms end */
+
+void battery_update_psd(struct battery_data *bat_data)
 {
-	int ret;
-	union power_supply_propval val = {0,};
-	struct power_supply *charger_dev;
-
-	charger_dev = power_supply_get_by_name("sc8551-standalone");
-	if (!charger_dev){
-		charger_dev = power_supply_get_by_name("ln8000-standalone");
-		if (!charger_dev){
-			pr_info("%s:get ln8000-standalone fail\n",__func__);
-			return 0;
-		}
-	}
-	ret = power_supply_get_property(charger_dev,POWER_SUPPLY_PROP_SC_DIE_TEMPERATURE, &val);
-	return val.intval;
-}
-
-#define SHUTDOWN_DELAY_VOL	3450
-extern bool mtk_shutdown_delay_enable;
-extern bool enable_notify_shutdown;
-
-int get_charge_type(struct battery_data *data)
-{
-	struct charger_device *chg1_dev;
-	int ret,cv;
-	chg1_dev = get_charger_by_name("primary_chg");
-	if (chg1_dev) {
-		ret = charger_dev_get_constant_voltage(chg1_dev, &cv);
-	} else
-		bm_err("*** Error : can't find primary charger ***\n");
-
-	if (data->BAT_STATUS == POWER_SUPPLY_STATUS_CHARGING) {
-		bm_err("%s,cv=%d,batt_vol=%d\n",__func__,cv,data->BAT_batt_vol);
-		if (data->BAT_batt_vol*1000 < 3100000)
-			return POWER_SUPPLY_CHARGE_TYPE_TRICKLE;
-		else if (data->BAT_batt_vol*1000 < cv)
-			return POWER_SUPPLY_CHARGE_TYPE_FAST;
-		else
-			return POWER_SUPPLY_CHARGE_TYPE_TAPER;
-	}else if (data->BAT_STATUS == POWER_SUPPLY_STATUS_FULL){
-		return POWER_SUPPLY_CHARGE_TYPE_NONE;
-	}else{
-		return POWER_SUPPLY_CHARGE_TYPE_NONE;
-	}
+	bat_data->BAT_batt_vol = battery_get_bat_voltage();
+	bat_data->BAT_batt_temp = battery_get_bat_temperature();
 }
 
 static int battery_get_property(struct power_supply *psy,
@@ -517,10 +479,6 @@ static int battery_get_property(struct power_supply *psy,
 	int ret = 0;
 	int fgcurrent = 0;
 	bool b_ischarging = 0;
-	int vbat_mv;
-	static bool shutdown_delay_cancel;
-	static bool last_shutdown_delay;
-	static bool shutdown_delay;
 
 	struct battery_data *data =
 		container_of(psy->desc, struct battery_data, psd);
@@ -528,6 +486,10 @@ static int battery_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		val->intval = data->BAT_STATUS;
+		/* BSP.Charge - 2020.12.01 - display discharging when suspend input current - start*/
+		if (charger_manager_is_input_suspend())
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		/* BSP.Charge - 2020.12.01 - display discharging when suspend input current - end*/
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = data->BAT_HEALTH;/* do not change before*/
@@ -546,56 +508,11 @@ static int battery_get_property(struct power_supply *psy,
 			val->intval = gm.fixed_uisoc;
 		else
 			val->intval = data->BAT_CAPACITY;
-
-		if (enable_notify_shutdown) {
-			if (data->BAT_STATUS == POWER_SUPPLY_STATUS_CHARGING) {
-				enable_notify_shutdown = false;
-			} else {
-				val->intval = 0;
-			}
-		}
-
-		if (mtk_shutdown_delay_enable) {
-			if (val->intval == 0) {
-				vbat_mv = battery_get_bat_voltage();
-				bm_err("shutdown_delay=%d,vbat_mv=%d,BAT_STATUS=%d,shutdown_delay_cancel=%d\n",
-					shutdown_delay,vbat_mv,data->BAT_STATUS,shutdown_delay_cancel);
-				if (vbat_mv <= SHUTDOWN_DELAY_VOL
-					&& data->BAT_STATUS != POWER_SUPPLY_STATUS_CHARGING) {
-					shutdown_delay = true;
-					val->intval = 1;
-				} else if (data->BAT_STATUS == POWER_SUPPLY_STATUS_CHARGING
-								&& shutdown_delay) {
-					shutdown_delay = false;
-					shutdown_delay_cancel = true;
-					val->intval = 1;
-				} else {
-					shutdown_delay = false;
-					if (shutdown_delay_cancel)
-						val->intval = 1;
-				}
-				val->intval = 1;
-			} else {
-				shutdown_delay = false;
-				shutdown_delay_cancel = false;
-			}
-
-			if (last_shutdown_delay != shutdown_delay) {
-				last_shutdown_delay = shutdown_delay;
-				if (data->psy)
-					power_supply_changed(data->psy);
-			}
-		}
-		break;
-	case POWER_SUPPLY_PROP_SHUTDOWN_DELAY:
-		val->intval = shutdown_delay;
-		break;
-	case POWER_SUPPLY_PROP_CHARGER_TEMP:
-		val->intval = get_charger_pump_temp();
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		b_ischarging = gauge_get_current(&fgcurrent);
-		if (b_ischarging == false)
+		/* BSP.Charge - 2020.12.30 - modify current judgment */
+		if (b_ischarging == true)
 			fgcurrent = 0 - fgcurrent;
 
 		val->intval = fgcurrent * 100;
@@ -604,9 +521,7 @@ static int battery_get_property(struct power_supply *psy,
 		val->intval = battery_get_bat_avg_current() * 100;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		val->intval =
-			fg_table_cust_data.fg_profile[gm.battery_id].q_max
-			* 1000;
+		val->intval = gm.algo_qmax * gm.aging_factor / 100;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 		val->intval = gm.ui_soc *
@@ -621,11 +536,6 @@ static int battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
 		val->intval = check_cap_level(data->BAT_CAPACITY);
-		break;
-	case POWER_SUPPLY_PROP_SOC_DECIMAL_RATE:
-		mtk_get_prop_soc_decimal_rate(&val->intval);
-	case POWER_SUPPLY_PROP_SOC_DECIMAL:
-		mtk_get_prop_soc_decimal(&val->intval);
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		/* full or unknown must return 0 */
@@ -654,32 +564,27 @@ static int battery_get_property(struct power_supply *psy,
 		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+	/*BSP.Charge - 2020.12.4 -Modify battery typical capacity*/
 		val->intval = 5000000;
 		break;
-	case POWER_SUPPLY_PROP_BATTERY_VOLTAGE:
-		val->intval = data->BAT_batt_vol * 1000;
+	/* BSP.Charge - 2020.11.09 - Add battery node - start */
+	case POWER_SUPPLY_PROP_BATTERY_ID_VOLTAGE:
+		val->intval = gm.battery_id_voltage;
 		break;
-	case POWER_SUPPLY_PROP_BATTERY_TEMP:
-		val->intval = gm.tbat_precise;
+	case POWER_SUPPLY_PROP_BATTERY_ID:
+		val->intval = gm.battery_id;
 		break;
-	case POWER_SUPPLY_PROP_RESISTANCE_ID:
-		val->intval = 0;
+	case POWER_SUPPLY_PROP_BATTERY_VENDOR:
+		val->intval = gm.battery_id; // decorated in power_supply_sysfs.c
 		break;
-	case POWER_SUPPLY_PROP_BATT_ID_UPDATE:
-		val->intval = 0;
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_TYPE:
-		val->intval = get_charge_type(data);
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+		val->intval = charger_manager_is_input_suspend();
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
-		val->intval = charger_manager_get_prop_system_temp_level();
+		val->intval = charger_manager_get_system_temp_level();
 		break;
-	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
-		val->intval = charger_manager_get_prop_system_temp_level_max();
-		break;
-	case POWER_SUPPLY_PROP_RESISTANCE:
-		val->intval = 150000;
-		break;
+	/* BSP.Charge - 2020.11.09 - Add battery node - end */
+
 	default:
 		ret = -EINVAL;
 		break;
@@ -688,38 +593,40 @@ static int battery_get_property(struct power_supply *psy,
 	return ret;
 }
 
-static int battery_set_prop(struct power_supply *psy,
-	enum power_supply_property psp,
-	const union power_supply_propval *val)
+/* BSP.Charge - 2020.11.13 - Add set writeable function,start */
+static int battery_set_property(struct power_supply *psy,
+				enum power_supply_property psp,
+				const union power_supply_propval *val)
 {
-	int ret;
+	int rc = 0;
+
 	switch (psp) {
-	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
-		charger_manager_set_prop_system_temp_level(val->intval);
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+		charger_manager_set_input_suspend(val->intval);
 		break;
-	case POWER_SUPPLY_PROP_BATT_ID_UPDATE:
-		fg_custom_init_from_header();
-		pr_err("set batt id prop %d\n", val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		charger_manager_set_system_temp_level(val->intval);
+		break;
 	default:
-		pr_err("set prop %d is not supported in battery\n", psp);
-		ret = -EINVAL;
+		rc = -EINVAL;
 		break;
 	}
-
-	return ret;
+	return rc;
 }
 
 static int battery_prop_is_writeable(struct power_supply *psy,
-	enum power_supply_property psp)
+				enum power_supply_property psp)
 {
 	switch (psp) {
-	case POWER_SUPPLY_PROP_BATT_ID_UPDATE:
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		return 1;
 	default:
 		break;
 	}
 	return 0;
 }
+/* BSP.Charge - 2020.11.13 - Add set writeable function,end */
 
 /* battery_data initialization */
 struct battery_data battery_main = {
@@ -729,8 +636,10 @@ struct battery_data battery_main = {
 		.properties = battery_props,
 		.num_properties = ARRAY_SIZE(battery_props),
 		.get_property = battery_get_property,
-		.set_property = battery_set_prop,
+		/* BSP.Charge - 2020.11.13 - Add set writeable function,start */
+		.set_property = battery_set_property,
 		.property_is_writeable = battery_prop_is_writeable,
+		/* BSP.Charge - 2020.11.13 - Add set writeable function,end */
 		},
 
 	.BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING,
@@ -800,8 +709,10 @@ bool fg_interrupt_check(void)
 	return true;
 }
 
-static void battery_report_full(struct battery_data *bat_data)
+void battery_update(struct battery_data *bat_data)
 {
+	struct power_supply *bat_psy = bat_data->psy;
+	/* BSP.Charge - 2020.12.17- set full at finishing charging start */
 	static struct charger_device *primary_charger;
 	bool chg_done = false;
 
@@ -813,7 +724,7 @@ static void battery_report_full(struct battery_data *bat_data)
 
 	if (bat_data->BAT_CAPACITY == 100 && upmu_get_rgs_chrdet() != 0
 		&& bat_data->BAT_STATUS != POWER_SUPPLY_STATUS_DISCHARGING
-		&& chg_done) {
+		&& chg_done && bat_data->BAT_batt_temp < 45) {
 		bat_data->BAT_STATUS = POWER_SUPPLY_STATUS_FULL;
 		bm_err("battery_update set FULL! ui:%d chr:%d %d done:%d\n",
 			bat_data->BAT_CAPACITY, upmu_get_rgs_chrdet(),
@@ -821,15 +732,11 @@ static void battery_report_full(struct battery_data *bat_data)
 	}
 	bm_err("battery_update status: ui:%d chr:%d status%d done:%d temp:%d\n",
 		bat_data->BAT_CAPACITY, upmu_get_rgs_chrdet(), bat_data->BAT_STATUS,
-		chg_done);
-}
+		chg_done, bat_data->BAT_batt_temp);
+	/* BSP.Charge - 2020.12.17- set full at finishing charging end */
 
-void battery_update(struct battery_data *bat_data)
-{
-	struct power_supply *bat_psy = bat_data->psy;
-
-	battery_report_full(bat_data);
 	battery_update_psd(&battery_main);
+	/* BSP.Charge - 2020.12.16 - Modify the charging technology check */
 	bat_data->BAT_TECHNOLOGY = POWER_SUPPLY_TECHNOLOGY_LIPO;
 	bat_data->BAT_HEALTH = POWER_SUPPLY_HEALTH_GOOD;
 	bat_data->BAT_PRESENT = 1;
@@ -1575,16 +1482,18 @@ unsigned int TempConverBattThermistor(int temp)
 	int TMP1 = 0, TMP2 = 0;
 	int i;
 	unsigned int TBatt_R_Value = 0xffff;
-
-	if (temp >= Fg_Temperature_Table[22].BatteryTemp) {
-		TBatt_R_Value = Fg_Temperature_Table[22].TemperatureR;
+	/* BSP.Charger - 2020.11.16 - add a new temperature table - start */
+	if (temp >= Fg_Temperature_Table[TEMP_TABLE_ITEM_NUM - 1].BatteryTemp) {
+		TBatt_R_Value = Fg_Temperature_Table[TEMP_TABLE_ITEM_NUM - 1].TemperatureR;
+	/* BSP.Charger - 2020.11.16 - add a new temperature table - end */
 	} else if (temp <= Fg_Temperature_Table[0].BatteryTemp) {
 		TBatt_R_Value = Fg_Temperature_Table[0].TemperatureR;
 	} else {
 		RES1 = Fg_Temperature_Table[0].TemperatureR;
 		TMP1 = Fg_Temperature_Table[0].BatteryTemp;
 
-		for (i = 0; i <= 22; i++) {
+		/* BSP.Charger - 2020.11.16 - add a new temperature table */
+		for (i = 0; i <= (TEMP_TABLE_ITEM_NUM - 1); i++) {
 			if (temp <= Fg_Temperature_Table[i].BatteryTemp) {
 				RES2 = Fg_Temperature_Table[i].TemperatureR;
 				TMP2 = Fg_Temperature_Table[i].BatteryTemp;
@@ -1617,13 +1526,15 @@ int BattThermistorConverTemp(int Res)
 
 	if (Res >= Fg_Temperature_Table[0].TemperatureR) {
 		TBatt_Value = -400;
-	} else if (Res <= Fg_Temperature_Table[22].TemperatureR) {
-		TBatt_Value = 700;
+	/* BSP.Charger - 2020.11.16 - add a new temperature table - start */
+	} else if (Res <= Fg_Temperature_Table[TEMP_TABLE_ITEM_NUM - 1].TemperatureR) {
+		TBatt_Value = 900;
+	/* BSP.Charger - 2020.11.16 - add a new temperature table - end */
 	} else {
 		RES1 = Fg_Temperature_Table[0].TemperatureR;
 		TMP1 = Fg_Temperature_Table[0].BatteryTemp;
 
-		for (i = 0; i <= 22; i++) {
+		for (i = 0; i <= (TEMP_TABLE_ITEM_NUM - 1); i++) {
 			if (Res >= Fg_Temperature_Table[i].TemperatureR) {
 				RES2 = Fg_Temperature_Table[i].TemperatureR;
 				TMP2 = Fg_Temperature_Table[i].BatteryTemp;
@@ -1638,7 +1549,7 @@ int BattThermistorConverTemp(int Res)
 		TBatt_Value = (((Res - RES2) * TMP1) +
 			((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
 	}
-	bm_trace(
+	bm_err(
 		"[%s] %d %d %d %d %d %d\n",
 		__func__,
 		RES1, RES2, Res, TMP1,
@@ -3768,8 +3679,8 @@ static ssize_t store_FG_daemon_log_level(
 				val
 			);
 
-			gm.d_log_level = 0;
-			gm.log_level = 0;
+			gm.d_log_level = val;
+			gm.log_level = val;
 		}
 		if (val >= 7)
 			gauge_coulomb_set_log_level(3);
@@ -4554,24 +4465,6 @@ static const struct file_operations adc_cali_fops = {
 	.release = adc_cali_release,
 };
 
-bool get_charging_call_state(void)
-{
-	return gm.charging_call_state;
-}
-static ssize_t show_charging_call_state(struct device *dev,struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "charging_call_state=%d\n",gm.charging_call_state);
-}
-static ssize_t store_charging_call_state(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
-{
-	if(buf[0]=='1')
-		gm.charging_call_state = true;
-	else
-		gm.charging_call_state = false;
-	bm_err("store_charging_call_state,buf=%s,size=%d,charging_call_state=%d\n",buf,size,gm.charging_call_state);
-	return -1;
-}
-static DEVICE_ATTR(charging_call_state, 0664, show_charging_call_state, store_charging_call_state);
 
 /*************************************/
 static struct wakeup_source battery_lock;
@@ -4628,6 +4521,18 @@ static int __init battery_probe(struct platform_device *dev)
 	}
 	bm_err("[BAT_probe] power_supply_register Battery Success !!\n");
 #endif
+	/* BSP.Charge - 2020.12.01 - Add bms start */
+	bms_main.psy =
+		power_supply_register(
+			&(dev->dev), &bms_main.psd, NULL);
+	if (IS_ERR(bms_main.psy)) {
+		bm_err("[BAT_probe] power_supply_register BMS Fail !!\n");
+		ret = PTR_ERR(bms_main.psy);
+		return ret;
+	}
+	bm_err("[BAT_probe] power_supply_register BMS Success !!\n");
+	/* BSP.Charge - 2020.12.01 - Add bms end */
+
 	ret = device_create_file(&(dev->dev), &dev_attr_Battery_Temperature);
 	ret = device_create_file(&(dev->dev), &dev_attr_UI_SOC);
 
@@ -4737,7 +4642,6 @@ static int __init battery_probe(struct platform_device *dev)
 		register_charger_manager_notifier(gm.pbat_consumer, &gm.bat_nb);
 	}
 
-	ret = device_create_file(&battery_main.psy->dev, &dev_attr_charging_call_state);
 	battery_debug_init();
 
 	__pm_relax(&battery_lock);
