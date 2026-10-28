@@ -215,4 +215,8 @@ source "drivers/tee/Kconfig"
 
 source "drivers/mux/Kconfig"
 
+source "drivers/mihw/Kconfig"
+
+source "drivers/switch/Kconfig"
+
 endmenu

@@ -84,3 +84,8 @@ OBJCOPYFLAGS_lkdtm_rodata_objcopy.o := \
 targets += lkdtm_rodata.o lkdtm_rodata_objcopy.o
 $(obj)/lkdtm_rodata_objcopy.o: $(obj)/lkdtm_rodata.o FORCE
 	$(call if_changed,objcopy)
+
+obj-$(CONFIG_HQ_SYSFS_SUPPORT)	+= hqsysfs/
+obj-$(CONFIG_SERIAL_NUM)	+= serial_num.o
+obj-$(CONFIG_DEBUG_POLICY)	+= debug_policy.o
+obj-$(CONFIG_CHIP_ID)		+= chip_id.o

@@ -557,4 +557,24 @@ source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/maxim/Kconfig"
 source "drivers/misc/mediatek/Kconfig"
+config SERIAL_NUM
+	bool "Enable Serial Number Proc Interface"
+	help
+	Provide a interface for reading CPU serial number
+
+
+config DEBUG_POLICY
+	bool "Enable DebugPolicy Proc Interface"
+	help
+	Provide a interface for reading debug policy status
+
+
+config CHIP_ID
+	bool "Enable CHIP_ID Proc Interface"
+	help
+	Provide a interface for reading chip_id
+
+
+source "drivers/misc/hqsysfs/Kconfig"
+
 endmenu
