@@ -131,7 +131,7 @@ enum ACDK_CAMERA_OPERATION_MODE_ENUM {
  ************************************************************************/
 
 /*  */
-#define MAX_NUM_OF_SUPPORT_SENSOR 32
+#define MAX_NUM_OF_SUPPORT_SENSOR (9+1)
 /*  */
 #define SENSOR_CLOCK_POLARITY_HIGH    0
 #define SENSOR_CLOCK_POLARITY_LOW 1
@@ -993,12 +993,6 @@ struct SET_SENSOR_AWB_GAIN {
 	MUINT32 ABS_GAIN_R;
 	MUINT32 ABS_GAIN_B;
 	MUINT32 ABS_GAIN_GB;
-};
-struct SET_SENSOR_PATTERN_SOLID_COLOR {
-	MUINT32 COLOR_R;
-	MUINT32 COLOR_Gr;
-	MUINT32 COLOR_Gb;
-	MUINT32 COLOR_B;
 };
 
 struct SET_SENSOR_ISO {

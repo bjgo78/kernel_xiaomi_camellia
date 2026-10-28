@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -134,6 +133,8 @@ static struct stAF_DrvList g_stAF_DrvList[MAX_NUM_OF_LENS] = {
 	 DW9718AF_Release, DW9718AF_GetFileName, NULL},
 	{1, AFDRV_GT9764AF, GT9764AF_SetI2Cclient, GT9764AF_Ioctl,
 	GT9764AF_Release, GT9764AF_GetFileName, NULL},
+	{1, AFDRV_GT9768AF, GT9768AF_SetI2Cclient, GT9768AF_Ioctl,
+	GT9768AF_Release, GT9768AF_GetFileName, NULL},
 	{1, AFDRV_LC898212AF, LC898212AF_SetI2Cclient, LC898212AF_Ioctl,
 	 LC898212AF_Release, LC898212AF_GetFileName, NULL},
 	{1, AFDRV_LC898214AF, LC898214AF_SetI2Cclient, LC898214AF_Ioctl,
@@ -295,10 +296,6 @@ void AFRegulatorCtrl(int Stage)
 					"k6833v1_64_6360_alpha", 20) == 0) {
 					regVCAMAF =
 					regulator_get(lens_device, "vmch");
-				} else if (strncmp(CONFIG_ARCH_MTK_PROJECT,
-					"k6833v1_64", 10) == 0) {
-					regVCAMAF =
-					regulator_get(lens_device, "vibr");
 				} else {
 					#if defined(CONFIG_REGULATOR_MT6317)
 					regVCAMAF =
@@ -306,8 +303,8 @@ void AFRegulatorCtrl(int Stage)
 					LOG_INF("regulator_get(%s)\n", "mt6317-ldo3");
 					#else
 					regVCAMAF =
-					regulator_get(lens_device, "vcamio");
-					LOG_INF("regulator_get(%s)\n", "vcamio");
+					regulator_get(lens_device, "vtp");
+					LOG_INF("regulator_get(%s)\n", "vtp");
 					#endif
 				}
 				#elif defined(CONFIG_MACH_MT6853)
@@ -317,7 +314,8 @@ void AFRegulatorCtrl(int Stage)
 					regulator_get(lens_device, "vmch");
 				} else {
 					regVCAMAF =
-					regulator_get(lens_device, "vcamio");
+					regulator_get(lens_device, "vtp");
+					LOG_INF("regulator_get(%s)\n", "vtp");
 				}
 				#elif defined(CONFIG_MACH_MT6873)
 				if (strncmp(CONFIG_ARCH_MTK_PROJECT,

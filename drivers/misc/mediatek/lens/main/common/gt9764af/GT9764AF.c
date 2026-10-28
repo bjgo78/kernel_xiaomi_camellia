@@ -154,6 +154,7 @@ static int initAF(void)
 		ret = s4AF_WriteReg(0, 0x07, 0x79); //CONTROL
 
 
+
 		spin_lock(g_pAF_SpinLock);
 		*g_pAF_Opened = 2;
 		spin_unlock(g_pAF_SpinLock);

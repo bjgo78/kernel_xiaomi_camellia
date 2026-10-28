@@ -18,52 +18,38 @@
 
 #define MAX_EEPROM_SIZE_16K 0x4000
 
+extern unsigned int gc02m1b_read_otp_info(struct i2c_client *client,
+  	unsigned int addr,
+  	unsigned char *data,
+  	unsigned int size);
+  
+  extern unsigned int gc02m1b_aac_read_otp_info(struct i2c_client *client,
+  	unsigned int addr,
+  	unsigned char *data,
+  	unsigned int size);
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
-	{OV13B10_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{IMX615_SENSOR_ID, 0xA8, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{OV64B_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	/*Below is commom sensor */
-	{IMX586_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K,
-		BL24SA64_write_region},
-	{IMX576_SENSOR_ID, 0xA2, Common_read_region},
-	{IMX519_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX319_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{S5K3M5SX_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K,
-		BL24SA64_write_region},
-	{IMX686_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{HI846_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{S5KGD1SP_SENSOR_ID, 0xA8, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{S5K2T7SP_SENSOR_ID, 0xA4, Common_read_region},
-	{IMX386_SENSOR_ID, 0xA0, Common_read_region},
-	{S5K2L7_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX398_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX350_SENSOR_ID, 0xA0, Common_read_region},
-	{S5KJN1SUNNY_SENSOR_ID, 0XA2, Common_read_region},
-	{OV50C40OFILM_SENSOR_ID, 0XA2, Common_read_region},
-	{OV16A1QOFILM_SENSOR_ID, 0xA2, Common_read_region},
-	{OV16A1QQTECH_SENSOR_ID, 0xA2, Common_read_region},
-	{OV02B10AAC_SENSOR_ID, 0xA4, Common_read_region},
-	{GC02M1OFILM_SENSOR_ID, 0xA4, Common_read_region},
-	{IMX355OFILM_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX355SUNNY_SENSOR_ID, 0XA0, Common_read_region},
-	{IMX386_MONO_SENSOR_ID, 0xA0, Common_read_region},
-	{S5KJD1_SENSOR_ID, 0xB0, Common_read_region, DEFAULT_MAX_EEPROM_SIZE_8K,
-		DW9763_write_region},
-	{IMX499_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX481_SENSOR_ID, 0xA4, Common_read_region, DEFAULT_MAX_EEPROM_SIZE_8K,
-		BL24SA64_write_region},
-	/*  ADD before this line */
-	{0, 0, 0}       /*end of list */
+    /*Below is commom sensor */
+    {OV48B_QTECH_MAIN_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
+    {OV48B_AAC_MAIN_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
+    {OV8856_OFILM_FRONT_SENSOR_ID, 0xA2, Common_read_region},
+    {OV8856_AAC_FRONT_SENSOR_ID, 0xA2, Common_read_region},
+    {HI259H_QTECH_MACRO_SENSOR_ID, 0xA4, Common_read_region},
+    {HI259H_AAC_MACRO_SENSOR_ID, 0xA4, Common_read_region},
+    {OV02B10_AAC_MACRO_SENSOR_ID, 0xA4, Common_read_region},
+    {GC02M1B_QTECH_DEPTH_SENSOR_ID, 0x37, gc02m1b_read_otp_info},
+    {GC02M1B_AAC_DEPTH_SENSOR_ID, 0x37, gc02m1b_aac_read_otp_info},
+    /*  ADD before this line */
+    {0, 0, 0}       /*end of list */
 };
 
 unsigned int cam_cal_get_sensor_list(
-	struct stCAM_CAL_LIST_STRUCT **ppCamcalList)
+    struct stCAM_CAL_LIST_STRUCT **ppCamcalList)
 {
-	if (ppCamcalList == NULL)
-		return 1;
+    if (ppCamcalList == NULL)
+        return 1;
 
-	*ppCamcalList = &g_camCalList[0];
-	return 0;
+    *ppCamcalList = &g_camCalList[0];
+    return 0;
 }
 
 
