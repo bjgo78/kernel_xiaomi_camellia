@@ -75,8 +75,9 @@
 #endif
 
 	host_function = /bits/ 8 <MSDC_SD>;
-
+/*BSP.Memory - 2020.11.03 - sdcard bringup start*/
 	cd_level = /bits/ 8 <MSDC_CD_HIGH>;
+/*BSP.Memory - 2020.11.03 - sdcard bringup end*/
 #ifndef CONFIG_FPGA_EARLY_PORTING
 	cd-gpios = <&pio 4 0>;
 #endif
