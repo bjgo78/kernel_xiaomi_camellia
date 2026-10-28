@@ -130,6 +130,7 @@ enum FPS_CHANGE_INDEX {
 
 struct mtk_panel_dsc_params {
 	unsigned int enable;
+	unsigned int bdg_dsc_enable;
 	unsigned int ver; /* [7:4] major [3:0] minor */
 	unsigned int slice_mode;
 	unsigned int rgb_swap;
@@ -220,6 +221,7 @@ struct mtk_panel_params {
 	unsigned int esd_check_enable;
 	struct esd_check_item lcm_esd_check_table[ESD_CHECK_NUM];
 	unsigned int ssc_disable;
+	unsigned int bdg_ssc_disable;
 	unsigned int ssc_range;
 	int lcm_color_mode;
 	unsigned int min_luminance;
@@ -355,7 +357,5 @@ int mtk_panel_ext_create(struct device *dev,
 int mtk_panel_tch_handle_reg(struct drm_panel *panel);
 void **mtk_panel_tch_handle_init(void);
 int mtk_panel_tch_rst(struct drm_panel *panel);
-int mtk_ddic_dsi_read_cmd(struct mtk_ddic_dsi_msg *cmd_msg);
-int mtk_ddic_dsi_send_cmd(struct mtk_ddic_dsi_msg *cmd_msg, bool blocking);
 
 #endif

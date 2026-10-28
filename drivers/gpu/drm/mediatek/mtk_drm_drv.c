@@ -69,14 +69,15 @@
 #include "include/pmic_api_buck.h"
 #endif
 
+#ifdef CONFIG_MTK_MT6382_BDG
+#include "mtk_disp_bdg.h"
+#endif
+
 #define DRIVER_NAME "mediatek"
 #define DRIVER_DESC "Mediatek SoC DRM"
 #define DRIVER_DATE "20150513"
 #define DRIVER_MAJOR 1
 #define DRIVER_MINOR 0
-
-atomic_t resume_pending;
-wait_queue_head_t resume_wait_q;
 
 static atomic_t top_isr_ref; /* irq power status protection */
 static atomic_t top_clk_ref; /* top clk status protection*/
@@ -1884,8 +1885,8 @@ static const struct mtk_crtc_path_data mt6873_mtk_main_path_data = {
 	.path_req_hrt[DDP_MAJOR][0] = true,
 	.wb_path[DDP_MAJOR] = mt6873_mtk_ddp_main_wb_path,
 	.wb_path_len[DDP_MAJOR] = ARRAY_SIZE(mt6873_mtk_ddp_main_wb_path),
-	.path[DDP_MINOR][0] = mt6873_mtk_ddp_main_minor,
-	.path_len[DDP_MINOR][0] = ARRAY_SIZE(mt6873_mtk_ddp_main_minor),
+	.path[DDP_MINOR][0] = NULL,
+	.path_len[DDP_MINOR][0] = 0,
 	.path_req_hrt[DDP_MINOR][0] = false,
 	.path[DDP_MINOR][1] = mt6873_mtk_ddp_main_minor_sub,
 	.path_len[DDP_MINOR][1] = ARRAY_SIZE(mt6873_mtk_ddp_main_minor_sub),
@@ -3107,6 +3108,10 @@ static int mtk_drm_kms_init(struct drm_device *drm)
 
 	mtk_drm_first_enable(drm);
 
+#ifdef CONFIG_MTK_MT6382_BDG
+	bdg_first_init();
+#endif
+
 	return 0;
 err_kms_helper_poll_fini:
 	drm_kms_helper_poll_fini(drm);
@@ -3937,13 +3942,8 @@ err_pm:
 	pm_runtime_disable(dev);
 err_node:
 	of_node_put(private->mutex_node);
-	for (i = 0; i < DDP_COMPONENT_ID_MAX; i++) {
+	for (i = 0; i < DDP_COMPONENT_ID_MAX; i++)
 		of_node_put(private->comp_node[i]);
-		if (private->ddp_comp[i]) {
-			put_device(private->ddp_comp[i]->larb_dev);
-			private->ddp_comp[i] = NULL;
-		}
-	}
 	return ret;
 }
 
@@ -3978,19 +3978,6 @@ static int mtk_drm_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int mtk_drm_sys_prepare(struct device *dev)
-{
-        atomic_inc(&resume_pending);
-        return 0;
-}
-
-static void mtk_drm_sys_complete(struct device *dev)
-{
-        atomic_set(&resume_pending, 0);
-        wake_up_all(&resume_wait_q);
-        return;
-}
-
 static int mtk_drm_sys_suspend(struct device *dev)
 {
 	struct mtk_drm_private *private = dev_get_drvdata(dev);
@@ -4033,12 +4020,8 @@ static int mtk_drm_sys_resume(struct device *dev)
 }
 #endif
 
-static const struct dev_pm_ops mtk_drm_pm_ops = {
-        .prepare = mtk_drm_sys_prepare,
-        .complete = mtk_drm_sys_complete,
-        .suspend = mtk_drm_sys_suspend,
-        .resume = mtk_drm_sys_resume,
-};
+static SIMPLE_DEV_PM_OPS(mtk_drm_pm_ops, mtk_drm_sys_suspend,
+			 mtk_drm_sys_resume);
 
 static const struct of_device_id mtk_drm_of_ids[] = {
 	{.compatible = "mediatek,mt2701-mmsys",

@@ -60,6 +60,7 @@
 #ifdef CONFIG_MTK_SVP_ON_MTEE_SUPPORT
 #include "tz_m4u.h"
 #endif
+
 /* *****Panel_Master*********** */
 #include "mtk_fbconfig_kdebug.h"
 #include "mtk_layering_rule_base.h"
@@ -119,13 +120,11 @@ static void mtk_drm_crtc_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 	struct drm_crtc *crtc = &mtk_crtc->base;
 	unsigned long flags;
 
-	if (mtk_crtc->event) {
-		spin_lock_irqsave(&crtc->dev->event_lock, flags);
-		drm_crtc_send_vblank_event(crtc, mtk_crtc->event);
-		drm_crtc_vblank_put(crtc);
-		mtk_crtc->event = NULL;
-		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
-	}
+	spin_lock_irqsave(&crtc->dev->event_lock, flags);
+	drm_crtc_send_vblank_event(crtc, mtk_crtc->event);
+	drm_crtc_vblank_put(crtc);
+	mtk_crtc->event = NULL;
+	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 }
 
 static void mtk_drm_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
@@ -390,7 +389,7 @@ void mtk_drm_crtc_analysis(struct drm_crtc *crtc)
 			__func__, priv->data->mmsys_id);
 		break;
 	}
-
+	printk("zhao:for_each_comp_in_cur_crtc_path\n");
 	for_each_comp_in_cur_crtc_path(comp, mtk_crtc, i, j)
 		mtk_dump_analysis(comp);
 
@@ -2366,7 +2365,9 @@ static void mtk_crtc_disp_mode_switch_begin(struct drm_crtc *crtc,
 	unsigned int _idle_timeout = 50;/*ms*/
 	int en = 1;
 	struct mtk_ddp_comp *output_comp;
-
+#ifdef CONFIG_MTK_MT6382_BDG
+	unsigned int crtc_id = 0;
+#endif
 	/* Check if disp_mode_idx change */
 	if (old_mtk_state->prop_val[CRTC_PROP_DISP_MODE_IDX] ==
 		mtk_state->prop_val[CRTC_PROP_DISP_MODE_IDX])
@@ -2437,8 +2438,11 @@ static void mtk_crtc_disp_mode_switch_begin(struct drm_crtc *crtc,
 		mtk_drm_set_idle_check_interval(crtc, _idle_timeout);
 
 	mtk_drm_idlemgr_kick(__func__, crtc, 0);
-
 	mtk_drm_trace_end();
+#ifdef CONFIG_MTK_MT6382_BDG
+	crtc_id = drm_crtc_index(crtc);
+	CRTC_MMP_EVENT_END(crtc_id, mode_switch, 0, 0);
+#endif
 }
 
 bool already_free;
@@ -6389,8 +6393,7 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 				break;
 			}
 		}
-	} else if (!(state->prop_val[CRTC_PROP_HDR_ENABLE] & MTK_HDR10P_PROPERTY_FLAG)
-		&& mtk_hdr_color_gain_setted) {
+	} else if (mtk_hdr_color_gain_setted) {
 		struct mtk_crtc_ddp_ctx *ddp_ctx = &mtk_crtc->ddp_ctx[mtk_crtc->ddp_mode];
 
 		for (i = 0; i < ddp_ctx->ddp_comp_nr[DDP_FIRST_PATH]; i++) {
@@ -6740,6 +6743,7 @@ static void mtk_crtc_get_output_comp_name(struct mtk_drm_crtc *mtk_crtc,
 		  __func__, drm_crtc_index(&mtk_crtc->base));
 	memset(buf, 0, buf_len);
 }
+
 static void mtk_crtc_get_event_name(struct mtk_drm_crtc *mtk_crtc, char *buf,
 				    int buf_len, int event_id)
 {

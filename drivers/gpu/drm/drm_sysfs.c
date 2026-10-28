@@ -17,12 +17,11 @@
 #include <linux/gfp.h>
 #include <linux/err.h>
 #include <linux/export.h>
+#include <drm/drm_encoder.h>
 
 #include <drm/drm_sysfs.h>
 #include <drm/drmP.h>
 #include "drm_internal.h"
-#include "linux/hardware_info.h"
-extern char Lcm_name[HARDWARE_MAX_ITEM_LONGTH];
 
 #define to_drm_minor(d) dev_get_drvdata(d)
 #define to_drm_connector(d) dev_get_drvdata(d)
@@ -231,93 +230,84 @@ static ssize_t modes_show(struct device *device,
 	return written;
 }
 
-extern ssize_t lcm_mipi_reg_write(char *buf, size_t count);
-extern ssize_t lcm_mipi_reg_read(char *buf);
-
-static ssize_t mipi_reg_show(struct device *device,
-			    struct device_attribute *attr,
-			   char *buf)
-{
-	return lcm_mipi_reg_read(buf);
-}
-
-static ssize_t mipi_reg_store(struct device *device,
+/* BSP.LCM - 2022.11.15 - modify for LCM disp_param */
+void drm_bridge_disp_param_set(struct drm_bridge *bridge, int cmd);
+static ssize_t disp_param_store(struct device *device,
 			   struct device_attribute *attr,
 			   const char *buf, size_t count)
 {
+	int param;
+	struct drm_connector *connector = NULL;
+	struct drm_encoder *encoder = NULL;
+	struct drm_bridge *bridge = NULL;
+
+	if (!device)
+		return count;
+
+	connector = to_drm_connector(device);
+	if (!connector)
+		return count;
+
+	encoder = connector->encoder;
+	if (!encoder)
+		return count;
+
+	bridge = encoder->bridge;
+	if (!bridge)
+		return count;
+	sscanf(buf, "0x%x", &param);
+
+	drm_bridge_disp_param_set(bridge, param);
+
+	return count;
+}
+
+int drm_bridge_disp_param_get(struct drm_bridge *bridge, char *buf);
+static ssize_t disp_param_show(struct device *device,
+			    struct device_attribute *attr,
+			   char *buf)
+{
 	int rc = 0;
-	rc = lcm_mipi_reg_write((char *)buf, count);
+	char tmpbuf[PAGE_SIZE] = {0};
+	struct drm_connector *connector = NULL;
+	struct drm_encoder *encoder = NULL;
+	struct drm_bridge *bridge = NULL;
+
+	if (!device)
+		return rc;
+
+	connector = to_drm_connector(device);
+	if (!connector)
+		return rc;
+
+	encoder = connector->encoder;
+	if (!encoder)
+		return rc;
+
+	bridge = encoder->bridge;
+	if (!bridge)
+		return rc;
+
+	rc = drm_bridge_disp_param_get(bridge, tmpbuf);
+	if (rc)
+		return snprintf(buf, PAGE_SIZE, "%s\n", tmpbuf);
+
 	return rc;
 }
-
-extern unsigned int panel_white_point_x;
-extern unsigned int panel_white_point_y;
-extern unsigned int panel_white_point_lv;
-
-static ssize_t white_point_x_show(struct device *device,
-			    struct device_attribute *attr,
-			   char *buf)
-{
-	return sprintf(buf, "%u\n", panel_white_point_x);
-}
-
-static ssize_t white_point_y_show(struct device *device,
-			    struct device_attribute *attr,
-			   char *buf)
-{
-	return sprintf(buf, "%u\n", panel_white_point_y);
-}
-
-static ssize_t white_point_lv_show(struct device *device,
-			    struct device_attribute *attr,
-			   char *buf)
-{
-	return sprintf(buf, "%u\n", panel_white_point_lv);
-}
-
-static ssize_t lcm_info_show(struct device *device,
-			    struct device_attribute *attr,
-			   char *buf)
-{
-	return sprintf(buf, "%s\n", Lcm_name);
-}
-
-static ssize_t panel_event_show(struct device *device,
-                           struct device_attribute *attr,
-                           char *buf)
-{
-        ssize_t ret = 0;
-        struct drm_connector *connector = to_drm_connector(device);
-        if (!connector) {
-                pr_info("%s-%d connector is NULL \r\n",__func__, __LINE__);
-                return ret;
-        }
-
-        return snprintf(buf, PAGE_SIZE, "%d\n", connector->panel_event);
-}
+/* end modify*/
 
 static DEVICE_ATTR_RW(status);
 static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
 static DEVICE_ATTR_RO(modes);
-static DEVICE_ATTR_RW(mipi_reg);
-static DEVICE_ATTR_RO(white_point_x);
-static DEVICE_ATTR_RO(white_point_y);
-static DEVICE_ATTR_RO(white_point_lv);
-static DEVICE_ATTR_RO(lcm_info);
-static DEVICE_ATTR_RO(panel_event);
+static DEVICE_ATTR_RW(disp_param);
 
 static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_status.attr,
 	&dev_attr_enabled.attr,
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
-	&dev_attr_mipi_reg.attr,
-	&dev_attr_white_point_x.attr,
-	&dev_attr_white_point_y.attr,
-	&dev_attr_white_point_lv.attr,
-	&dev_attr_lcm_info.attr,
-	&dev_attr_panel_event.attr,
+	&dev_attr_disp_param.attr,
 	NULL
 };
 

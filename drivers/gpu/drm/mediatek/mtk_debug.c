@@ -47,6 +47,9 @@
 #endif
 #include "mtk_drm_arr.h"
 #include "mtk_drm_graphics_base.h"
+#ifdef CONFIG_MTK_MT6382_BDG
+#include "mtk_disp_bdg.h"
+#endif
 
 #define DISP_REG_CONFIG_MMSYS_CG_SET(idx) (0x104 + 0x10 * (idx))
 #define DISP_REG_CONFIG_MMSYS_CG_CLR(idx) (0x108 + 0x10 * (idx))
@@ -1809,10 +1812,84 @@ static void process_dbg_opt(const char *opt)
 			if (!crtc->enabled
 				|| mtk_crtc->ddp_mode == DDP_NO_USE)
 				continue;
-
+			printk("zhao:mtk_drm_crtc_analysis\n");
 			mtk_drm_crtc_analysis(crtc);
 			mtk_drm_crtc_dump(crtc);
 		}
+#ifdef CONFIG_MTK_MT6382_BDG
+	} else if (strncmp(opt, "bdg_dump", 8) == 0) {
+		bdg_dsi_dump_reg(DISP_BDG_DSI0);
+	} else if (strncmp(opt, "set_data_rate:", 14) == 0) {
+		unsigned int data_rate = 0;
+		int ret = -1;
+
+		ret = sscanf(opt, "set_data_rate:%d\n",
+			&data_rate);
+		if (ret != 1) {
+			DDPMSG("[error]%d error to parse set_data_rate cmd %s\n",
+				__LINE__, opt);
+			return;
+		}
+
+		set_bdg_data_rate(data_rate);
+
+	} else if (!strncmp(opt, "set_mask_spi:", 13)) {
+		unsigned int addr = 0, val = 0, mask = 0;
+		int ret = -1;
+
+		ret = sscanf(opt, "set_mask_spi:addr=0x%x,mask=0x%x,val=0x%x\n",
+			&addr, &mask, &val);
+		if (ret != 3) {
+			DDPMSG("[error]%d error to parse set_mt6382_spi cmd %s\n",
+				__LINE__, opt);
+			return;
+		}
+
+		ret = mtk_spi_mask_write(addr, mask, val);
+		if (ret < 0) {
+			DDPMSG("[error]write mt6382 fail,addr:0x%x, val:0x%x\n",
+				addr, val);
+			return;
+		}
+	} else if (!strncmp(opt, "set_mt6382_spi:", 15)) {
+		unsigned int addr = 0, val = 0;
+		int ret = -1;
+
+		ret = sscanf(opt, "set_mt6382_spi:addr=0x%x,val=0x%x\n",
+			&addr, &val);
+		if (ret != 2) {
+			DDPMSG("[error]%d error to parse set_mt6382_spi cmd %s\n",
+				__LINE__, opt);
+			return;
+		}
+
+		ret = mtk_spi_write(addr, val);
+		if (ret < 0) {
+			DDPMSG("[error]write mt6382 fail,addr:0x%x, val:0x%x\n",
+				addr, val);
+			return;
+		}
+
+	} else if (!strncmp(opt, "read_mt6382_spi:", 16)) {
+		unsigned int addr = 0, val = 0;
+		int ret = -1;
+
+		ret = sscanf(opt, "read_mt6382_spi:addr=0x%x\n", &addr);
+		if (ret != 1) {
+			DDPMSG("[error]%d error to parse read_mt6382_spi cmd %s\n",
+				__LINE__, opt);
+			return;
+		}
+
+		val = mtk_spi_read(addr);
+		DDPMSG("mt6382 read addr:0x%08x, val:0x%08x\n", addr, val);
+
+	} else if (strncmp(opt, "check", 5) == 0) {
+		if (check_stopstate(NULL) == 0)
+			bdg_tx_start(DISP_BDG_DSI0, NULL);
+		mdelay(100);
+		return;
+#endif
 	} else if (strncmp(opt, "repaint", 7) == 0) {
 		drm_trigger_repaint(DRM_REPAINT_FOR_IDLE, drm_dev);
 	} else if (strncmp(opt, "dalprintf", 9) == 0) {
@@ -2079,7 +2156,7 @@ static void process_dbg_opt(const char *opt)
 			return;
 		}
 
-		DDPINFO("mipi_ccci:%d\n", en);
+		printk("zhao:mtk_debug.c:mipi_ccci:%d\n", en);
 		mtk_disp_mipi_ccci_callback(en, 0);
 	} else if (strncmp(opt, "aal:", 4) == 0) {
 		disp_aal_debug(opt + 4);
@@ -2628,34 +2705,6 @@ static int idlevfp_get(void *data, u64 *val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(idlevfp_fops, idlevfp_get, idlevfp_set, "%llu\n");
 
-static ssize_t idle_state_show(struct device *device,
-			      struct device_attribute *attr,
-			      char *buf)
-{
-	struct drm_crtc *crtc;
-	int state;
-
-	crtc = list_first_entry(&(drm_dev)->mode_config.crtc_list,
-				typeof(*crtc), head);
-	if (!crtc) {
-		DDPPR_ERR("find crtc fail\n");
-		return -ENODEV;
-	}
-	state = mtk_drm_is_idle(crtc);
-	if (state < 0) {
-		return -ENODEV;
-	}
-
-	return scnprintf(buf, PAGE_SIZE, "%s\n", state ? "idle" : "active");
-}
-
-static DEVICE_ATTR_RO(idle_state);
-
-static const struct attribute *mtk_idle_attrs[] = {
-	&dev_attr_idle_state.attr,
-	NULL
-};
-
 void disp_dbg_probe(void)
 {
 #if IS_ENABLED(CONFIG_DEBUG_FS)
@@ -2756,11 +2805,6 @@ out:
 void disp_dbg_init(struct drm_device *dev)
 {
 	drm_dev = dev;
-
-	if (sysfs_create_files(&(drm_dev)->dev->kobj, mtk_idle_attrs) < 0)
-		pr_warn("[%s %d]failed to create idle state file\n",
-			__func__, __LINE__);
-
 	init_completion(&cwb_cmp);
 }
 

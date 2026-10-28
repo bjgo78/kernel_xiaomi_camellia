@@ -1342,7 +1342,7 @@ static void _ovl_common_config(struct mtk_ddp_comp *comp, unsigned int idx,
 			size = buf_size;
 			regs_addr = comp->regs_pa +
 				DISP_REG_OVL_EL_ADDR(id);
-			if (state->pending.is_sec && pending->addr && (dst_h >= 1)) {
+			if (state->pending.is_sec && pending->addr) {
 				meta_type = CMDQ_IWC_H_2_MVA;
 				cmdq_sec_pkt_write_reg(handle, regs_addr,
 					pending->addr, meta_type,
@@ -1437,7 +1437,7 @@ static void _ovl_common_config(struct mtk_ddp_comp *comp, unsigned int idx,
 			size = buf_size;
 			regs_addr = comp->regs_pa +
 				DISP_REG_OVL_ADDR(ovl, lye_idx);
-			if (state->pending.is_sec && pending->addr && (dst_h >= 1)) {
+			if (state->pending.is_sec && pending->addr) {
 				meta_type = CMDQ_IWC_H_2_MVA;
 				cmdq_sec_pkt_write_reg(handle, regs_addr,
 					pending->addr, meta_type,
@@ -1685,6 +1685,17 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 		DDPDBG("%s, vtotal=%d, vact=%d\n",
 			__func__, vtotal, vact);
 
+		if (drm_crtc_index(&comp->mtk_crtc->base) == 2 &&
+			(fmt == DRM_FORMAT_RGBA8888 || fmt == DRM_FORMAT_BGRA8888 ||
+			fmt == DRM_FORMAT_ARGB8888 || fmt == DRM_FORMAT_ABGR8888))
+			cmdq_pkt_write(handle, comp->cmdq_base,
+		       comp->regs_pa + DISP_REG_OVL_ROI_BGCLR, 0x0,
+		       ~0);
+		else
+			cmdq_pkt_write(handle, comp->cmdq_base,
+		       comp->regs_pa + DISP_REG_OVL_ROI_BGCLR, OVL_ROI_BGCLR,
+		       ~0);
+
 		mtk_ovl_layer_on(comp, lye_idx, ext_lye_idx, handle);
 		/*constant color :non RDMA source*/
 		/* TODO: cause RPO abnormal */
@@ -1872,7 +1883,7 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 
 			regs_addr = comp->regs_pa +
 				DISP_REG_OVL_EL_ADDR(id);
-			if (state->pending.is_sec && pending->addr && (dst_h >= 1)) {
+			if (state->pending.is_sec && pending->addr) {
 				size = buf_size;
 				meta_type = CMDQ_IWC_H_2_MVA;
 				cmdq_sec_pkt_write_reg(handle, regs_addr,
@@ -1969,7 +1980,7 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 
 			regs_addr = comp->regs_pa +
 				DISP_REG_OVL_ADDR(ovl, lye_idx);
-			if (state->pending.is_sec && pending->addr && (dst_h >= 1)) {
+			if (state->pending.is_sec && pending->addr) {
 				size = buf_size;
 				meta_type = CMDQ_IWC_H_2_MVA;
 				cmdq_sec_pkt_write_reg(handle, regs_addr,
@@ -2258,7 +2269,7 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 			DISP_REG_OVL_ELX_HDR_ADDR(id);
 
 #if defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
-		if (comp->mtk_crtc->sec_on && state->pending.is_sec && (dst_h >= 1)) {
+		if (comp->mtk_crtc->sec_on && state->pending.is_sec) {
 			u32 size, meta_type;
 			u32 addr_offset;
 
@@ -2351,7 +2362,7 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 		hdr_addr = comp->regs_pa +
 			DISP_REG_OVL_LX_HDR_ADDR(lye_idx);
 #if defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
-		if (comp->mtk_crtc->sec_on && state->pending.is_sec && (dst_h >= 1)) {
+		if (comp->mtk_crtc->sec_on && state->pending.is_sec) {
 			u32 size, meta_type, addr_offset;
 
 			size = buf_size;

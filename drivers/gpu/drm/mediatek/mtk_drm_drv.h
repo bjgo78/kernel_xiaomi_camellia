@@ -74,6 +74,14 @@ struct regmap;
 struct mm_qos_request;
 struct pm_qos_request;
 
+/* BSP.LCM - 2020.12.08 start */
+struct fb_lcd_wp_para {
+	int white_point_x;
+	int white_point_y;
+	int white_point_l;
+};
+/* BSP.LCM - 2020.12.08 end */
+
 struct mtk_atomic_state {
 	struct drm_atomic_state base;
 	struct list_head list;
@@ -267,8 +275,6 @@ extern struct platform_driver mtk_lvds_driver;
 extern struct platform_driver mtk_lvds_tx_driver;
 extern struct platform_driver mtk_disp_dsc_driver;
 extern struct lcm_fps_ctx_t lcm_fps_ctx[MAX_CRTC];
-extern atomic_t resume_pending;
-extern wait_queue_head_t resume_wait_q;
 extern struct platform_driver mtk_disp_merge_driver;
 #ifdef CONFIG_MTK_HDMI_SUPPORT
 extern struct platform_driver mtk_dp_tx_driver;

@@ -37,12 +37,20 @@
 #include "mtk_drm_mmp.h"
 #include "mtk_drm_fbdev.h"
 #include "mtk_drm_trace.h"
+#include "mtk_dump.h"
+
+#ifdef CONFIG_MTK_MT6382_BDG
+#include "mtk_disp_bdg.h"
+#include "mtk_dsi.h"
+#endif
+/*BSP.TP - 2021.3.13 - Strengthen ESD remedy*/
+bool esd_flag;
 
 #define ESD_TRY_CNT 5
-#define ESD_CHECK_PERIOD 3000 /* ms */
+#define ESD_CHECK_PERIOD 4000 /* ms */
+bool g_trigger_disp_esd_recovery;
 
-bool g_trigger_disp_esd_recovery = false;
-
+EXPORT_SYMBOL(g_trigger_disp_esd_recovery);
 /* pinctrl implementation */
 long _set_state(struct drm_crtc *crtc, const char *name)
 {
@@ -148,18 +156,30 @@ static void esd_cmdq_timeout_cb(struct cmdq_cb_data data)
 	struct drm_crtc *crtc = data.data;
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_drm_esd_ctx *esd_ctx = mtk_crtc->esd_ctx;
+#ifdef CONFIG_MTK_MT6382_BDG
+	struct mtk_ddp_comp *output_comp = NULL;
+#endif
 
 	if (!crtc) {
 		DDPMSG("%s find crtc fail\n", __func__);
 		return;
 	}
-
-	DDPMSG("read flush fail\n");
+	DDPMSG("[error]%s cmdq timeout out\n", __func__);
 	esd_ctx->chk_sta = 0xff;
+#ifndef CONFIG_MTK_MT6382_BDG
 	mtk_drm_crtc_analysis(crtc);
 	mtk_drm_crtc_dump(crtc);
+#else
+	if (mtk_crtc) {
+		output_comp = mtk_ddp_comp_request_output(mtk_crtc);
+		if (output_comp) {
+			mtk_dump_analysis(output_comp);
+			mtk_dump_reg(output_comp);
+		}
+	}
+	bdg_dsi_dump_reg(DISP_BDG_DSI0);
+#endif
 }
-
 
 int _mtk_esd_check_read(struct drm_crtc *crtc)
 {
@@ -171,7 +191,6 @@ int _mtk_esd_check_read(struct drm_crtc *crtc)
 	int ret = 0;
 
 	DDPINFO("[ESD]ESD read panel\n");
-
 
 	output_comp = mtk_ddp_comp_request_output(mtk_crtc);
 	if (unlikely(!output_comp)) {
@@ -364,13 +383,6 @@ static int mtk_drm_request_eint(struct drm_crtc *crtc)
 	return ret;
 }
 
-static atomic_t is_panel_dead;
-
-int get_panel_dead_status(void) {
-	return atomic_read(&is_panel_dead);
-}
-EXPORT_SYMBOL(get_panel_dead_status);
-
 static int mtk_drm_esd_check(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
@@ -420,6 +432,9 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_ddp_comp *output_comp;
 	int ret = 0;
+#ifdef CONFIG_MTK_MT6382_BDG
+	struct mtk_dsi *dsi = NULL;
+#endif
 
 	CRTC_MMP_EVENT_START(drm_crtc_index(crtc), esd_recovery, 0, 0);
 	if (crtc->state && !crtc->state->active) {
@@ -437,6 +452,9 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	mtk_drm_idlemgr_kick(__func__, &mtk_crtc->base, 0);
 
 	mtk_ddp_comp_io_cmd(output_comp, NULL, CONNECTOR_PANEL_DISABLE, NULL);
+#ifdef CONFIG_MTK_MT6382_BDG
+	bdg_common_deinit(DISP_BDG_DSI0, NULL);
+#endif
 
 	mtk_drm_crtc_disable(crtc, true);
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 2);
@@ -450,6 +468,10 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	mtk_drm_crtc_enable(crtc);
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 3);
 
+#ifdef CONFIG_MTK_MT6382_BDG
+	dsi = container_of(output_comp, struct mtk_dsi, ddp_comp);
+	mtk_output_bdg_enable(dsi, false);
+#endif
 	mtk_ddp_comp_io_cmd(output_comp, NULL, CONNECTOR_PANEL_ENABLE, NULL);
 
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 4);
@@ -491,6 +513,7 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 	int ret = 0;
 	int i = 0;
 	int recovery_flg = 0;
+	esd_flag = false;
 
 	sched_setscheduler(current, SCHED_RR, &param);
 
@@ -538,14 +561,19 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 		do {
 			ret = mtk_drm_esd_check(crtc);
 
-			if ((!ret) && (!g_trigger_disp_esd_recovery)) /* success */
+			if ((!ret) && (!g_trigger_disp_esd_recovery))
+			//if (!ret)/* success */
 				break;
 
 			DDPPR_ERR(
 				"[ESD]esd check fail, will do esd recovery. try=%d\n",
 				i);
-			atomic_set(&is_panel_dead, 1);
+			esd_flag = true;
+			DDPPR_ERR(
+				"[ESD]Now esd_flag = %d\n",
+				esd_flag);
 			mtk_drm_esd_recover(crtc);
+			g_trigger_disp_esd_recovery = false;
 			recovery_flg = 1;
 		} while (++i < ESD_TRY_CNT);
 
@@ -558,10 +586,9 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 			mutex_unlock(&private->commit.lock);
 			break;
 		} else if (recovery_flg) {
-			DDPINFO("[ESD] esd recovery success\n");
+			DDPPR_ERR("[ESD] esd recovery success\n");
 			recovery_flg = 0;
-			atomic_set(&is_panel_dead, 0);
-			g_trigger_disp_esd_recovery = false;
+			esd_flag = false;
 		}
 		mtk_drm_trace_end();
 		DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
