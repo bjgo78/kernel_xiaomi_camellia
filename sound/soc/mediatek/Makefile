@@ -25,6 +25,8 @@ obj-$(CONFIG_MTK_ULTRASND_PROXIMITY) += scp_ultra/
 # dsp related code
 obj-$(CONFIG_SND_SOC_MTK_AUDIO_DSP) += audio_dsp/
 obj-$(CONFIG_SND_SOC_MTK_AUDIO_DSP) += common_int/
+obj-$(CONFIG_SND_SOC_AW87559) += aw87559/
+obj-$(CONFIG_SND_SOC_FS16XX) += fs1815n/
 
 # btcvsd
 obj-$(CONFIG_SND_SOC_MTK_BTCVSD) += common/
@@ -138,6 +140,3 @@ obj-y += $(AUDIO_PLATFORM)/
 # AP include path
 subdir-ccflags-y += -Werror -I$(src)/$(AUDIO_PLATFORM)
 endif
-
-obj-$(CONFIG_SND_SOC_AW87559) += aw87559/
-obj-$(CONFIG_SND_SOC_FS16XX) += fs1815n/
