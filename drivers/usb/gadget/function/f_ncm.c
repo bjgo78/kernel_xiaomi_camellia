@@ -533,6 +533,7 @@ static inline void ncm_reset_values(struct f_ncm *ncm)
 {
 	ncm->parser_opts = &ndp16_opts;
 	ncm->is_crc = false;
+	ncm->ndp_sign = ncm->parser_opts->ndp_sign;
 	ncm->port.cdc_filter = DEFAULT_FILTER;
 
 	/* doesn't make sense for ncm, fixed size used */
@@ -795,6 +796,9 @@ static int ncm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 		default:
 			goto invalid;
 		}
+		/* NDP16 and NDP32 use different signatures (NCM0 vs ncm0) */
+		ncm->ndp_sign = ncm->parser_opts->ndp_sign |
+			(ncm->is_crc ? NCM_NDP_HDR_CRC : NCM_NDP_HDR_NOCRC);
 		value = 0;
 		break;
 	}
