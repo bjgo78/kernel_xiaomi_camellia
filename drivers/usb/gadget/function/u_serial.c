@@ -900,6 +900,14 @@ static void gs_close(struct tty_struct *tty, struct file *file)
 	struct gs_port *port = tty->driver_data;
 	struct gserial	*gser;
 
+	/*
+	 * The tty core calls ->close() even when ->open() failed. If the
+	 * port was removed (e.g. the ACM function was unlinked in configfs)
+	 * gs_open() returns -ENODEV before setting driver_data.
+	 */
+	if (!port)
+		return;
+
 	spin_lock_irq(&port->port_lock);
 
 	if (port->port.count != 1) {
