@@ -1404,6 +1404,14 @@ static int loop_set_block_size(struct loop_device *lo, unsigned long arg)
 out_unfreeze:
 	blk_mq_unfreeze_queue(lo->lo_queue);
 
+	/*
+	 * util-linux sets the block size after LOOP_SET_STATUS64 has already
+	 * scanned the partition table with 512-byte sectors, so a GPT written
+	 * with 4096-byte sectors is not found. Scan again with the new size.
+	 */
+	if (!err && (lo->lo_flags & LO_FLAGS_PARTSCAN))
+		loop_reread_partitions(lo, lo->lo_device);
+
 	return err;
 }
 
