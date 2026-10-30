@@ -37,3 +37,4 @@ struct mt_irtx {
 #define COMPAT_IRTX_IOC_SET_DUTY_CYCLE     _IOW('R', 2, compat_uint_t)
 #define COMPAT_IRTX_IOC_SET_IRTX_LED_EN    _IOW('R', 10, compat_uint_t)
 #endif
+

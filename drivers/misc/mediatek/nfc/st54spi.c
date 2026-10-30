@@ -44,6 +44,8 @@
 // AND avoid SPI_NSS low when VCC_SE is high but SPI not used.
 
 
+// #define WITH_SPI_CLK_MNGT 1
+
 #include "st21nfc/st21nfc.h"
 
 #include <linux/platform_data/spi-mt65xx.h>
