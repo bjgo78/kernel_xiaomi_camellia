@@ -71,8 +71,10 @@ static int mtkts_btsmdpa_debug_log;
 static int kernelmode;
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
+/* BSP.Charge - 2020.12.11 - enable first trip temp and blind cooler - start */
 static int num_trip = 1;
-static char g_bind0[20] = {"mtk-cl-kshutdown00"};
+static char g_bind0[20] = "mtk-cl-kshutdown00";
+/* BSP.Charge - 2020.12.11 - enable first trip temp and blind cooler - end */
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
 static char g_bind3[20] = { 0 };
@@ -105,7 +107,7 @@ do {                                    \
 } while (0)
 
 #define mtkts_btsmdpa_printk(fmt, args...) \
-pr_debug("[Thermal/TZ/BTSMDPA]" fmt, ##args)
+pr_notice("[Thermal/TZ/BTSMDPA]" fmt, ##args)
 
 
 #if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
@@ -1201,7 +1203,7 @@ void mtkts_btsmdpa_prepare_table(int table_num)
 		break;
 	}
 
-	pr_debug("[Thermal/TZ/BTSMDPA] %s table_num=%d\n",
+	pr_notice("[Thermal/TZ/BTSMDPA] %s table_num=%d\n",
 						__func__, table_num);
 
 #if 0

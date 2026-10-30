@@ -44,7 +44,7 @@ static int mtk_cl_backlight_get_max_state
 	return 0;
 }
 
-	static int mtk_cl_backlight_get_cur_state
+static int mtk_cl_backlight_get_cur_state
 (struct thermal_cooling_device *cdev, unsigned long *state)
 {
 	*state = g_backlight_level;
@@ -57,7 +57,7 @@ static int mtk_cl_backlight_set_cur_state
 	int enable = (state >= MAX_BACKLIGHT_BRIGHTNESS) ? 0 : 1;
 #if !defined(CONFIG_LEDS_MTK_DISP) && \
 		!defined(CONFIG_LEDS_MTK_PWM)
-        int temp;
+	int temp;
 
 #endif
 	state = (state > MAX_BACKLIGHT_BRIGHTNESS)

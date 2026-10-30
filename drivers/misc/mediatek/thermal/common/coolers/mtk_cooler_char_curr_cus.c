@@ -53,16 +53,16 @@ static unsigned int g_char_curr_level;
 static unsigned int g_thm_en_charging;
 static unsigned int max_char_curr_index;
 
-/* char_curr_t = charging current table 
+/* char_curr_t = charging current table
 *  -1	: unlimit charging current
 *  0	: stop charging
 *  positive integer: charging current limit (unit: mA)
 */
-static int char_curr_t[CHAR_CURR_TABLE_INDEX] =
-	{  -1, 2800, 2600, 2400, 2200,
-	 2000, 1800, 1600, 1400, 1200,
-	 1000,  800,  600,  400,  200,
-	 0};
+static int char_curr_t[CHAR_CURR_TABLE_INDEX] = {
+	-1, 2800, 2600, 2400, 2200,
+	2000, 1800, 1600, 1400, 1200,
+	1000,  800,  600,  400,  200,
+	0};
 
 static int _cl_char_curr_read(struct seq_file *m, void *v)
 {
@@ -118,7 +118,7 @@ static int mtk_cl_char_curr_set_cur_state
 		mtk_cooler_char_curr_dprintk("%s: wrong state=%ld %d\n",
 			__func__, state, max_char_curr_index);
 	} else {
-		g_char_curr_level = state; 
+		g_char_curr_level = state;
 
 		if (g_char_curr_level == 0) {
 			chr_input_curr_limit = -1;/* unlimit input current*/

@@ -36,7 +36,7 @@ static struct thermal_cooling_device
 *cl_flashlight_dev[FLASHLIGHT_COOLER_NR] = { 0 };
 static unsigned int g_cl_id[FLASHLIGHT_COOLER_NR];
 static unsigned int g_flashlight_level;
-static unsigned int g_max_flashlight_level = 0;
+static unsigned int g_max_flashlight_level;
 
 static int mtk_cl_flashlight_get_max_state
 (struct thermal_cooling_device *cdev, unsigned long *state)
@@ -45,7 +45,7 @@ static int mtk_cl_flashlight_get_max_state
 	return 0;
 }
 
-	static int mtk_cl_flashlight_get_cur_state
+static int mtk_cl_flashlight_get_cur_state
 (struct thermal_cooling_device *cdev, unsigned long *state)
 {
 	*state = g_flashlight_level;
@@ -152,3 +152,6 @@ static int __init mtk_cooler_flashlight_late_init(void)
 module_init(mtk_cooler_flashlight_init);
 module_exit(mtk_cooler_flashlight_exit);
 late_initcall(mtk_cooler_flashlight_late_init);
+
+ 
+
