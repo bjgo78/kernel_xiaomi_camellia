@@ -27,7 +27,6 @@ enum {
 	CONFIG_CMD_CFG_DATA     = 3,
 	CONFIG_CMD_CALIBRATE    = 4,
 	CONFIG_CMD_SELF_TEST    = 5,
-	CONFIG_CMD_CALIBRATE_LEAK = 6,
 };
 
 struct ConfigCmd {
@@ -238,6 +237,7 @@ struct data_unit_t {
 		struct sensor_vec_t pdr_event;
 
 		int32_t light;
+		int32_t rear_light;
 		struct proximity_vec_t proximity_t;
 		int32_t temperature;
 		struct pressure_vec_t pressure_t;

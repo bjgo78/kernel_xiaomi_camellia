@@ -117,7 +117,7 @@ static int hf_manager_report_event(struct hf_client *client,
 
 	spin_lock_irqsave(&hf_fifo->buffer_lock, flags);
 	if (unlikely(hf_fifo->buffull == true)) {
-		hang_time = ktime_get_boottime_ns() - hf_fifo->hang_begin;
+		hang_time = ktime_get_boot_ns() - hf_fifo->hang_begin;
 		if (hang_time >= max_hang_time) {
 			/* reset buffer */
 			hf_fifo->buffull = false;
@@ -164,9 +164,9 @@ static int hf_manager_report_event(struct hf_client *client,
 			hang_time = hf_fifo->hang_begin -
 				hf_fifo->client_active;
 			if (hang_time < max_hang_time)
-				hf_fifo->hang_begin = ktime_get_boottime_ns();
+				hf_fifo->hang_begin = ktime_get_boot_ns();
 		} else {
-			hf_fifo->hang_begin = ktime_get_boottime_ns();
+			hf_fifo->hang_begin = ktime_get_boot_ns();
 		}
 	}
 	spin_unlock_irqrestore(&hf_fifo->buffer_lock, flags);
@@ -248,7 +248,7 @@ static enum hrtimer_restart hf_manager_io_poll(struct hrtimer *timer)
 		(struct hf_manager *)container_of(timer,
 			struct hf_manager, io_poll_timer);
 
-	hf_manager_sched_sample(manager, ktime_get_boottime_ns());
+	hf_manager_sched_sample(manager, ktime_get_boot_ns());
 	hrtimer_forward_now(&manager->io_poll_timer,
 		ns_to_ktime(atomic64_read(&manager->io_poll_interval)));
 	return HRTIMER_RESTART;
@@ -546,7 +546,7 @@ static void hf_manager_update_client_param(struct hf_client *client,
 		/* update new */
 		if (!request->enable)
 			atomic64_set(&request->start_time,
-				ktime_get_boottime_ns());
+				ktime_get_boot_ns());
 		request->enable = true;
 		request->delay = batch->delay;
 		request->latency = batch->latency;
@@ -792,12 +792,6 @@ static int hf_manager_device_calibration(struct hf_device *device,
 	return 0;
 }
 
-static int hf_manager_device_calibration_leak(struct hf_device *device,
-		uint8_t sensor_type)
-{
-		return device->leak_calibration(device, sensor_type);
-}
-
 static int hf_manager_device_config_cali(struct hf_device *device,
 		uint8_t sensor_type, void *data, uint8_t length)
 {
@@ -960,10 +954,6 @@ static int hf_manager_drive_device(struct hf_client *client,
 		break;
 	case HF_MANAGER_SENSOR_ENABLE_CALI:
 		err = hf_manager_device_calibration(device, sensor_type);
-		break;
-         case HF_MANAGER_SENSOR_LEAK:
-                   printk("kaze kernel leak cali");
-		err = hf_manager_device_calibration_leak(device, sensor_type);
 		break;
 	case HF_MANAGER_SENSOR_CONFIG_CALI:
 		err = hf_manager_device_config_cali(device,
@@ -1128,7 +1118,7 @@ static int fetch_next(struct hf_client_fifo *hf_fifo,
 		*event = hf_fifo->buffer[hf_fifo->tail++];
 		hf_fifo->tail &= hf_fifo->bufsize - 1;
 		hf_fifo->buffull = false;
-		hf_fifo->client_active = ktime_get_boottime_ns();
+		hf_fifo->client_active = ktime_get_boot_ns();
 	}
 	spin_unlock_irqrestore(&hf_fifo->buffer_lock, flags);
 	return have_event;
