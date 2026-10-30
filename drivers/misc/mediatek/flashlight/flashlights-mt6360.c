@@ -53,11 +53,11 @@
 
 #define MT6360_LEVEL_NUM 32
 #define MT6360_LEVEL_TORCH 16
-#define MT6360_LONG_LIGHT 13
 #define MT6360_LEVEL_FLASH MT6360_LEVEL_NUM
 #define MT6360_WDT_TIMEOUT 1248 /* ms */
 #define MT6360_HW_TIMEOUT 400 /* ms */
 
+static char node_one_buf[20] = {"0"};
 /* define mutex, work queue and timer */
 static DEFINE_MUTEX(mt6360_mutex);
 static struct work_struct mt6360_work_ch1;
@@ -100,6 +100,21 @@ static const int mt6360_current[MT6360_LEVEL_NUM] = {
 	1150, 1200
 };
 
+#if defined(__XIAOMI_CAMERA__) || defined(FACTORY_CAMERA_MODE)
+static const unsigned char mt6360_torch_level[MT6360_LEVEL_TORCH] = {
+	0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12,
+	0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E
+};
+
+/* 0x00~0x74 6.25mA/step 0x75~0xB1 12.5mA/step */
+static const unsigned char mt6360_strobe_level[MT6360_LEVEL_FLASH] = {
+	0x00, 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C, 0x20, 0x24,
+	0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x44, 0x4C, 0x54, 0x5C,
+	0x64, 0x6C, 0x74, 0x78, 0x7C, 0x80, 0x84, 0x88, 0x8C, 0x98,
+	0x98, 0x98
+};
+#else
+
 static const unsigned char mt6360_torch_level[MT6360_LEVEL_TORCH] = {
 	0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12,
 	0x14, 0x16, 0x18, 0x1A, 0x1C, 0x1E
@@ -112,6 +127,7 @@ static const unsigned char mt6360_strobe_level[MT6360_LEVEL_FLASH] = {
 	0x64, 0x6C, 0x74, 0x78, 0x7C, 0x80, 0x84, 0x88, 0x8C, 0x90,
 	0x94, 0x98
 };
+#endif
 
 static int mt6360_decouple_mode;
 static int mt6360_en_ch1;
@@ -721,6 +737,33 @@ static ssize_t mt6360_strobe_store(struct flashlight_arg arg)
 	return 0;
 }
 
+static ssize_t att_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	pr_debug("echo mt6360_FLASH debug buf, %s ", buf);
+	sprintf(node_one_buf, "%s\n", buf);
+	if ((strcmp("0", buf) == 0) || (strcmp("0\x0a", buf) == 0)) {
+		pr_debug("mt6360_FLASH  0");
+		mt6360_disable(MT6360_CHANNEL_CH1);
+		mt6360_set_driver(0);
+	} else {
+		pr_debug("mt6360_FLASH  1");
+		mt6360_set_driver(1);
+		mt6360_set_level_ch1(0);
+		mt6360_timeout_ms[MT6360_CHANNEL_CH1] = 0;
+		mt6360_enable();
+	}
+	return count;
+}
+static ssize_t att_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	return sprintf(buf, "%s\n", node_one_buf);
+}
+static DEVICE_ATTR(mt6360_FLASH, 0664, att_show, att_store);
+
 static struct flashlight_operations mt6360_ops = {
 	mt6360_open,
 	mt6360_release,
@@ -729,85 +772,6 @@ static struct flashlight_operations mt6360_ops = {
 	mt6360_set_driver
 };
 
-static int flash_is_use = 0;
-unsigned char last_val = 0;
-static ssize_t mt6360_torch_brightness_show(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
-{
-	unsigned char reg_val = 0;
-	reg_val  = last_val;
-
-	return snprintf(buf, 10, "%d\n", reg_val);
-
-}
-
-static ssize_t mt6360_torch_brightness_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
-{
-	int ret = 0;
-	unsigned long value = 0;
-
-	ret = kstrtoul(buf, 10, &value);
-	if (ret < 0)
-		return ret;
-	pr_info("%s value is %d,length is %d\n",__func__,value,strlen(buf));
-
-	last_val = value;
-
-	if (value <= 0) {
-		if (flash_is_use) {
-			pr_info("disable flashlight");
-			flash_is_use = 0;
-			//mt6360_operate(MT6360_CHANNEL_CH1, MT6360_DISABLE);
-			//mt6360_operate(MT6360_CHANNEL_CH2, MT6360_DISABLE);
-			mt6360_disable(MT6360_CHANNEL_ALL);
-			mt6360_timer_cancel(MT6360_CHANNEL_CH1);
-			mt6360_timer_cancel(MT6360_CHANNEL_CH2);
-
-			/* clear flashlight state */
-			mt6360_en_ch1 = MT6360_NONE;
-			mt6360_en_ch2 = MT6360_NONE;
-			mt6360_set_driver(0);
-		} else{
-			pr_debug("flashlight is alreadly disable");
-		}
-		return count;
-	} else {
-		if(value > MT6360_LONG_LIGHT)
-			value = MT6360_LONG_LIGHT;
-		flash_is_use = 1;
-	}
-
-	mt6360_set_driver(1);
-	mt6360_operate(MT6360_CHANNEL_CH1, MT6360_DISABLE);
-	mt6360_operate(MT6360_CHANNEL_CH2, MT6360_DISABLE);
-
-	flashlight_set_torch_brightness (
-	flashlight_dev_ch1, mt6360_torch_level[value - 1]);
-	mt6360_timeout_ms[MT6360_CHANNEL_CH1] = 0;
-	mt6360_en_ch1 = MT6360_ENABLE_TORCH;
-
-	mt6360_enable();
-	if(strlen(buf) >= 2)
-		count = strlen(buf) - 1;
-	else
-		count = 1;
-
-	return count;
-}
-
-static DEVICE_ATTR(torch_brightness, 0664, mt6360_torch_brightness_show, mt6360_torch_brightness_store);
-
-static struct attribute *mt6360_attributes[] = {
-	&dev_attr_torch_brightness.attr,
-	NULL
-};
-
-static struct attribute_group mt6360_attribute_group = {
-	.attrs = mt6360_attributes
-};
 
 /******************************************************************************
  * Platform device and driver
@@ -940,13 +904,7 @@ static int mt6360_probe(struct platform_device *pdev)
 		if (flashlight_dev_register(MT6360_NAME, &mt6360_ops))
 			return -EFAULT;
 	}
-
-	ret = sysfs_create_group(&pdev->dev.kobj,
-					   &mt6360_attribute_group);
-	if (ret < 0) {
-		dev_info(&pdev->dev, "%s error creating sysfs attr files\n",
-			 __func__);
-	}
+    sysfs_create_file(&pdev->dev.kobj, &dev_attr_mt6360_FLASH.attr);
 	pr_debug("Probe done.\n");
 
 	return 0;

@@ -100,13 +100,15 @@ static int fl_set_level(struct flashlight_dev *fdev, int level)
 					pt_over_cur, pt_strict);
 		}
 #endif
-
-	if (fdev->need_cooler)
-		if (fdev->cooler_level >= 0 && level > fdev->cooler_level) {
-			level = fdev->cooler_level;
-			pr_info("Set level to (%d) since thermal need cooler\n",
-					level);
-		}
+	/* BSP.Charge - 2020.11.25 - Config thermal framework start */
+        if (fdev->need_cooler) {
+                if (fdev->cooler_level >= 0 && level > fdev->cooler_level) {
+                        level = fdev->cooler_level;
+                        pr_info("Set level to (%d) since thermal need cooler\n",
+                                        level);
+                }
+        }
+        /* BSP.Charge - 2020.11.25 - Config thermal framework end */
 
 	/* ioctl */
 	fl_dev_arg.channel = fdev->dev_id.channel;
@@ -117,6 +119,7 @@ static int fl_set_level(struct flashlight_dev *fdev, int level)
 		return -EFAULT;
 	}
 
+	/* BSP.Charge - 2020.11.25 - Config thermal framework */
 	/* update device status */
 	//fdev->level = level;
 
@@ -386,8 +389,11 @@ int flashlight_dev_register(
 			fdev->ops = dev_ops;
 			fdev->dev_id = flashlight_id[i];
 			fdev->low_pt_level = -1;
-			fdev->need_cooler = 0;
-			fdev->cooler_level = -1;
+			/* BSP.Charge - 2020.11.25 - Config thermal framework start */
+                        fdev->need_cooler = 0;
+                        fdev->cooler_level = -1;
+                        /* BSP.Charge - 2020.11.25 - Config thermal framework end */
+
 			fdev->charger_status = FLASHLIGHT_CHARGER_READY;
 			list_add_tail(&fdev->node, &flashlight_list);
 			mutex_unlock(&fl_mutex);
@@ -471,8 +477,11 @@ int flashlight_dev_register_by_device_id(
 	fdev->ops = dev_ops;
 	fdev->dev_id = *dev_id;
 	fdev->low_pt_level = -1;
-	fdev->need_cooler = 0;
-	fdev->cooler_level = -1;
+	/* BSP.Charge - 2020.11.25 - Config thermal framework start */
+        fdev->need_cooler = 0;
+        fdev->cooler_level = -1;
+        /* BSP.Charge - 2020.11.25 - Config thermal framework end */
+
 	fdev->charger_status = FLASHLIGHT_CHARGER_READY;
 	list_add_tail(&fdev->node, &flashlight_list);
 	mutex_unlock(&fl_mutex);
@@ -480,69 +489,6 @@ int flashlight_dev_register_by_device_id(
 	return 0;
 }
 EXPORT_SYMBOL(flashlight_dev_register_by_device_id);
-
-int flashlight_get_max_duty(void)
-{
-	struct flashlight_dev *fdev;
-	struct flashlight_dev_arg fl_dev_arg;
-	int duty_num = -1;
-
-	mutex_lock(&fl_mutex);
-	list_for_each_entry(fdev, &flashlight_list, node) {
-		if (!fdev->ops)
-			continue;
-
-		fdev->ops->flashlight_open();
-		fdev->ops->flashlight_set_driver(1);
-		fl_dev_arg.channel = fdev->dev_id.channel;
-		fdev->ops->flashlight_ioctl(
-				FLASH_IOC_GET_DUTY_NUMBER,
-				(unsigned long)&fl_dev_arg);
-		if (fl_dev_arg.arg > duty_num)
-			duty_num = fl_dev_arg.arg;
-		fdev->ops->flashlight_set_driver(0);
-		fdev->ops->flashlight_release();
-	}
-	mutex_unlock(&fl_mutex);
-
-	pr_info("get max duty:%d\n", duty_num - 1);
-
-	return duty_num - 1;
-}
-EXPORT_SYMBOL(flashlight_get_max_duty);
-
-int flashlight_set_cooler_level(int level)
-{
-	struct flashlight_dev *fdev;
-
-	if (level < 0) {
-		pr_info("Failed to set level:%d\n", level);
-		return -1;
-	}
-
-	pr_info("cooler level:%d\n", level);
-
-	mutex_lock(&fl_mutex);
-	list_for_each_entry(fdev, &flashlight_list, node) {
-		if (!fdev->ops)
-			continue;
-
-		fdev->ops->flashlight_open();
-		fdev->ops->flashlight_set_driver(1);
-		fdev->need_cooler = 1;
-		fdev->cooler_level = level;
-		if (fdev->enable && (fdev->level > fdev->cooler_level))
-			fl_set_level(fdev, fdev->cooler_level);
-		else if (fdev->enable && (fdev->level <= fdev->cooler_level))
-			fl_set_level(fdev, fdev->level);
-		fdev->ops->flashlight_set_driver(0);
-		fdev->ops->flashlight_release();
-	}
-	mutex_unlock(&fl_mutex);
-
-	return 0;
-}
-EXPORT_SYMBOL(flashlight_set_cooler_level);
 
 int flashlight_dev_unregister_by_device_id(struct flashlight_device_id *dev_id)
 {
@@ -572,7 +518,70 @@ int flashlight_dev_unregister_by_device_id(struct flashlight_device_id *dev_id)
 }
 EXPORT_SYMBOL(flashlight_dev_unregister_by_device_id);
 
+/* BSP.Charge - 2020.11.25 - Config thermal framework start */
+int flashlight_get_max_duty(void)
+{
+       struct flashlight_dev *fdev;
+       struct flashlight_dev_arg fl_dev_arg;
+       int duty_num = -1;
 
+       mutex_lock(&fl_mutex);
+       list_for_each_entry(fdev, &flashlight_list, node) {
+               if (!fdev->ops)
+                       continue;
+
+               fdev->ops->flashlight_open();
+               fdev->ops->flashlight_set_driver(1);
+               fl_dev_arg.channel = fdev->dev_id.channel;
+               fdev->ops->flashlight_ioctl(
+                               FLASH_IOC_GET_DUTY_NUMBER,
+                               (unsigned long)&fl_dev_arg);
+               if (fl_dev_arg.arg > duty_num)
+                      duty_num = fl_dev_arg.arg;
+               fdev->ops->flashlight_set_driver(0);
+               fdev->ops->flashlight_release();
+       }
+       mutex_unlock(&fl_mutex);
+
+       pr_info("get max duty:%d\n", duty_num - 1);
+
+       return duty_num - 1;
+}
+EXPORT_SYMBOL(flashlight_get_max_duty);
+
+int flashlight_set_cooler_level(int level)
+{
+       struct flashlight_dev *fdev;
+
+       if (level < 0) {
+               pr_info("Failed to set level:%d\n", level);
+               return -1;
+       }
+
+       pr_info("cooler level:%d\n", level);
+
+       mutex_lock(&fl_mutex);
+       list_for_each_entry(fdev, &flashlight_list, node) {
+               if (!fdev->ops)
+                       continue;
+
+               fdev->ops->flashlight_open();
+               fdev->ops->flashlight_set_driver(1);
+               fdev->need_cooler = 1;
+               fdev->cooler_level = level;
+               if (fdev->enable && (fdev->level > fdev->cooler_level))
+                       fl_set_level(fdev, fdev->cooler_level);
+               else if (fdev->enable && (fdev->level <= fdev->cooler_level))
+                       fl_set_level(fdev, fdev->level);
+               fdev->ops->flashlight_set_driver(0);
+               fdev->ops->flashlight_release();
+       }
+       mutex_unlock(&fl_mutex);
+
+       return 0;
+}
+EXPORT_SYMBOL(flashlight_set_cooler_level);
+/* BSP.Charge - 2020.11.25 - Config thermal framework end */
 /******************************************************************************
  * Vsync IRQ
  *****************************************************************************/
@@ -653,7 +662,6 @@ static int pt_is_low(int pt_low_vol, int pt_low_bat, int pt_over_cur)
 {
 	int is_low = 0;
 
-	/*
 	if (pt_low_bat != BATTERY_PERCENT_LEVEL_0
 			|| pt_low_vol != LOW_BATTERY_LEVEL_0
 			|| pt_over_cur != BATTERY_OC_LEVEL_0) {
@@ -661,7 +669,6 @@ static int pt_is_low(int pt_low_vol, int pt_low_bat, int pt_over_cur)
 		if (pt_strict)
 			is_low = 2;
 	}
-	*/
 
 	return is_low;
 }
@@ -893,7 +900,8 @@ static long _flashlight_ioctl(
 		pr_debug("FLASH_IOC_SET_DUTY(%d,%d,%d): %d\n",
 				type, ct, part, fl_arg.arg);
 		mutex_lock(&fl_mutex);
-		fdev->level = fl_arg.arg;
+		/* BSP.Charge - 2020.11.25 - Config thermal framework */
+                fdev->level = fl_arg.arg;
 		ret = fl_set_level(fdev, fl_arg.arg);
 		mutex_unlock(&fl_mutex);
 		break;
@@ -1195,7 +1203,7 @@ static ssize_t flashlight_charger_show(
 	char status_tmp[FLASHLIGHT_CHARGER_STATUS_TMPBUF_SIZE];
 	int ret;
 
-	pr_debug("Sw disable status show\n");
+	pr_debug("Charger status show\n");
 
 	memset(status, '\0', FLASHLIGHT_CHARGER_STATUS_BUF_SIZE);
 
@@ -1550,7 +1558,8 @@ static ssize_t flashlight_sw_disable_show(
 	char status_tmp[FLASHLIGHT_SW_DISABLE_STATUS_TMPBUF_SIZE];
 	int ret;
 
-	pr_debug("Charger status show\n");
+	/* BSP.Charge - 2020.11.25 - Config thermal framework */
+        pr_debug("Sw disable status show\n");
 
 	memset(status, '\0', FLASHLIGHT_SW_DISABLE_STATUS_BUF_SIZE);
 
@@ -1586,7 +1595,7 @@ static ssize_t flashlight_sw_disable_store(struct device *dev,
 	char *token, *cur = (char *)buf;
 	int ret;
 
-	pr_debug("SW disable store\n");
+	pr_debug("Sw disable store\n");
 
 	memset(&fl_arg, 0, sizeof(struct flashlight_arg));
 
@@ -1877,10 +1886,10 @@ static int __init flashlight_init(void)
 	}
 
 #ifdef CONFIG_MTK_FLASHLIGHT_PT
-//	register_low_battery_notify(
-//			&pt_low_vol_callback, LOW_BATTERY_PRIO_FLASHLIGHT);
-//	register_battery_percent_notify(
-//			&pt_low_bat_callback, BATTERY_PERCENT_PRIO_FLASHLIGHT);
+	register_low_battery_notify(
+			&pt_low_vol_callback, LOW_BATTERY_PRIO_FLASHLIGHT);
+	register_battery_percent_notify(
+			&pt_low_bat_callback, BATTERY_PERCENT_PRIO_FLASHLIGHT);
 	register_battery_oc_notify(
 			&pt_oc_callback, BATTERY_OC_PRIO_FLASHLIGHT);
 #endif
