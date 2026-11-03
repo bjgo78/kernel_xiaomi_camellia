@@ -19,7 +19,7 @@
 #include <imsg_log.h>
 
 #define TZ_LOG_SIZE           (PAGE_SIZE * 64)
-#define TZ_LINE_BUFFER_SIZE   256
+#define TZ_LINE_BUFFER_SIZE   512
 
 #define TZ_LOG_RATELIMIT_INTERVAL	(1 * HZ)
 #define TZ_LOG_RATELIMIT_BURST		200
@@ -66,11 +66,9 @@ struct tz_log_state {
 int tz_log_probe(struct platform_device *pdev);
 int tz_log_remove(struct platform_device *pdev);
 int tz_driver_read_logs(char *buffer, unsigned long count);
-#ifdef CONFIG_MICROTRUST_TZ_LOG
 int teei_log_fn(void *work);
 int init_tlog_comp_fn(void);
 void teei_notify_log_fn(void);
-#endif
 int teei_change_log_status(unsigned long new_status);
 #endif
 

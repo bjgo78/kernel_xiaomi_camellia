@@ -38,7 +38,7 @@
 
 
 #define SOTER_SHM_NUM_PRIV_PAGES	1
-//#define TEEI_DTS_RESERVED_MEM
+#define TEEI_DTS_RESERVED_MEM
 
 static struct reserved_mem *reserved_mem;
 static atomic_t is_shm_pool_available = ATOMIC_INIT(0);
@@ -108,7 +108,7 @@ static void soter_release(struct tee_context *ctx)
 	if (!ctxdata)
 		return;
 
-	shm = isee_shm_alloc(ctx, sizeof(struct optee_msg_arg), TEE_SHM_MAPPED);
+	shm = isee_shm_alloc_noid(ctx, sizeof(struct optee_msg_arg), TEE_SHM_MAPPED);
 	if (!IS_ERR(shm)) {
 		arg = isee_shm_get_va(shm, 0);
 		/*
@@ -233,7 +233,7 @@ soter_config_shm_memremap(void **memremaped_shm)
 	reserved_mem->size = size;
 #endif
 
-	IMSG_INFO("reserved memory @ 0x%llx, size %zx\n",
+	IMSG_ERROR("reserved memory @ 0x%llx, size %zx\n",
 		(unsigned long long)paddr, size);
 
 	if (size < 2 * SOTER_SHM_NUM_PRIV_PAGES * PAGE_SIZE) {
