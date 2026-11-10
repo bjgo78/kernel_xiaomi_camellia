@@ -1213,7 +1213,7 @@ out_revert_acct:
  * This should work even if CONFIG_PROC_FS isn't set, as proc_dointvec_minmax
  * will return an error.
  */
-int pipe_proc_fn(struct ctl_table *table, int write, void __user *buf,
+int pipe_proc_fn(struct ctl_table *table, int write, void *buf,
 		 size_t *lenp, loff_t *ppos)
 {
 	unsigned int rounded_pipe_max_size;

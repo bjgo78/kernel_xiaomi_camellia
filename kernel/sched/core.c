@@ -1600,7 +1600,7 @@ done:
 }
 
 int sched_uclamp_handler(struct ctl_table *table, int write,
-			 void __user *buffer, size_t *lenp,
+			 void *buffer, size_t *lenp,
 			 loff_t *ppos)
 {
 	int old_min, old_max;
