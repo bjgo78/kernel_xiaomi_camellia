@@ -161,9 +161,9 @@ struct task_struct *hdmi_wait_vsync_task;
 #define IS_HDMI_FAKE_PLUG_IN()		\
 	(atomic_read(&hdmi_fake_in) == true)
 #define SET_HDMI_FAKE_PLUG_IN()		\
-	(atomic_set(&hdmi_fake_in, true))
+	atomic_set(&hdmi_fake_in, true)
 #define SET_HDMI_NOT_FAKE()		\
-	(atomic_set(&hdmi_fake_in, false))
+	atomic_set(&hdmi_fake_in, false)
 
 #define MHL_SESSION_ID          (0x20001)
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
