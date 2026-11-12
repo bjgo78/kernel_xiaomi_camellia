@@ -206,12 +206,12 @@ static inline int get_stune_id(struct task_struct *task)
 {
 #if IS_ENABLED(CONFIG_SCHED_TUNE)
 	const int subsys_id = schedtune_cgrp_id;
-	struct cgroup *grp;
+	int id;
 
 	rcu_read_lock();
-	grp = task_cgroup(task, subsys_id);
+	id = task_css(task, subsys_id)->id;
 	rcu_read_unlock();
-	return grp->id;
+	return id;
 #else
 	return 0;
 #endif
