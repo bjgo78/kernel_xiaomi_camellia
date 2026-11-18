@@ -706,9 +706,9 @@ static int kwdt_thread(void *arg)
 		}
 
 #ifdef KWDT_KICK_TIME_ALIGN
-		usleep_range(curInterval, curInterval + SOFT_KICK_RANGE);
+		usleep_idle_range(curInterval, curInterval + SOFT_KICK_RANGE);
 #else
-		usleep_range(g_kinterval*1000*1000,
+		usleep_idle_range(g_kinterval*1000*1000,
 			g_kinterval*1000*1000 + SOFT_KICK_RANGE);
 #endif
 

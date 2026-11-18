@@ -312,7 +312,7 @@ static void boost_work(struct work_struct *work_struct)
 		if (raw)
 			__boost_act(id, ACT_HOLD);
 
-		msleep(poll_intval);
+		msleep_idle(poll_intval);
 
 	}
 

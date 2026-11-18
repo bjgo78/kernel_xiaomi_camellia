@@ -92,7 +92,7 @@ static int fsm_poll_main(void *data)
 				CCCI_STATUS_TX, 0, 0, 1);
 		CCCI_NORMAL_LOG(poller_ctl->md_id, FSM,
 				"poll MD status send msg %d\n", ret);
-		ret = wait_event_timeout(poller_ctl->status_rx_wq,
+		ret = wait_event_idle_timeout(poller_ctl->status_rx_wq,
 		poller_ctl->poller_state == FSM_POLLER_RECEIVED_RESPONSE,
 		POLLING_TIMEOUT * HZ);
 		CCCI_NORMAL_LOG(poller_ctl->md_id, FSM,
@@ -136,7 +136,7 @@ static int fsm_poll_main(void *data)
 			}
 		}
 next:
-		msleep(POLLING_INTERVAL_TIME);
+		msleep_idle(POLLING_INTERVAL_TIME);
 	}
 	return 0;
 }

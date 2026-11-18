@@ -2734,7 +2734,7 @@ static int mt6360_chg_mivr_task_threadfn(void *data)
 
 	dev_info(mpci->dev, "%s ++\n", __func__);
 	while (!kthread_should_stop()) {
-		wait_event(mpci->waitq, atomic_read(&mpci->mivr_cnt) > 0);
+		wait_event_idle(mpci->waitq, atomic_read(&mpci->mivr_cnt) > 0);
 		mt_dbg(mpci->dev, "%s: enter mivr thread\n", __func__);
 		pm_stay_awake(mpci->dev);
 		/* check real mivr stat or not */

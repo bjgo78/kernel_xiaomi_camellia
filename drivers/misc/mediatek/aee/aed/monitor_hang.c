@@ -1765,7 +1765,7 @@ static int hang_detect_dump_thread(void *arg)
 	};
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
-	msleep(120 * 1000);
+	msleep_idle(120 * 1000);
 	dump_bt_done = 1;
 	while (1) {
 		wait_event_interruptible(dump_bt_start_wait, dump_bt_done == 0);
@@ -1819,7 +1819,7 @@ static int hang_detect_thread(void *arg)
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 	reset_hang_info();
-	msleep(120 * 1000);
+	msleep_idle(120 * 1000);
 	pr_debug("[Hang_Detect] hang_detect thread starts.\n");
 
 #ifdef BOOT_UP_HANG
@@ -1913,7 +1913,7 @@ static int hang_detect_thread(void *arg)
 			}
 		}
 
-		msleep((HD_INTER) * 1000);
+		msleep_idle((HD_INTER) * 1000);
 	}
 	return 0;
 }

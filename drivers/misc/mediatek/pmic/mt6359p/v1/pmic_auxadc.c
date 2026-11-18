@@ -362,8 +362,10 @@ static int mdrt_kthread(void *x)
 	unsigned int rdy_time;
 	unsigned int temp_mdrt_adc;
 
-	/* Run on a process content */
+	/* Run on a process content; sleep until wake_up_mdrt_thread() */
 	while (1) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
 		mutex_lock(&mdrt_mutex);
 		polling_cnt = 0;
 		temp_mdrt_adc = pmic_get_register_value(
@@ -395,9 +397,6 @@ static int mdrt_kthread(void *x)
 		}
 		mutex_unlock(&mdrt_mutex);
 		__pm_relax(&mdrt_wakelock);
-
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
 	}
 	return 0;
 }
@@ -407,7 +406,7 @@ static void mdrt_monitor_init(void)
 	wakeup_source_init(&mdrt_wakelock, "MDRT Monitor wakelock");
 	mutex_init(&mdrt_mutex);
 	mdrt_adc = pmic_get_register_value(PMIC_AUXADC_ADC_OUT_MDRT);
-	mdrt_thread_handle = kthread_create(mdrt_kthread, NULL, "mdrt_thread");
+	mdrt_thread_handle = kthread_run(mdrt_kthread, NULL, "mdrt_thread");
 	if (IS_ERR(mdrt_thread_handle)) {
 		mdrt_thread_handle = NULL;
 		pr_notice(PMICTAG "[%s] creation fails\n", __func__);

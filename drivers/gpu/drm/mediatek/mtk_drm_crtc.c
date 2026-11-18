@@ -3759,8 +3759,9 @@ long mtk_crtc_wait_status(struct drm_crtc *crtc, bool status, long timeout)
 	long ret;
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 
-	ret = wait_event_timeout(mtk_crtc->crtc_status_wq,
-				 mtk_crtc->enabled == status, timeout);
+	/* only caller: the idle manager thread, waiting for the CRTC */
+	ret = wait_event_idle_timeout(mtk_crtc->crtc_status_wq,
+				      mtk_crtc->enabled == status, timeout);
 
 	return ret;
 }

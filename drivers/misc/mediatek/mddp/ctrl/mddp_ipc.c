@@ -139,7 +139,7 @@ static int32_t mddp_md_msg_hdlr(void *arg)
 			MDDP_C_LOG(MDDP_LL_WARN,
 					"%s: ipc_tty_port is invalid(%d)!\n",
 					__func__, mddp_ipc_tty_port_s);
-			msleep(5000);
+			msleep_idle(5000);
 			continue;
 		}
 
@@ -159,7 +159,7 @@ static int32_t mddp_md_msg_hdlr(void *arg)
 					"%s: Failed to read TTY (%d), count(%d)!\n",
 					__func__,
 					mddp_ipc_tty_port_s, rx_count);
-			msleep(1000);
+			msleep_idle(1000);
 			continue;
 		}
 	}
