@@ -532,7 +532,7 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 	}
 
 	while (1) {
-		msleep(ESD_CHECK_PERIOD);
+		msleep_idle(ESD_CHECK_PERIOD);
 		ret = wait_event_interruptible(
 			esd_ctx->check_task_wq,
 			atomic_read(&esd_ctx->check_wakeup) &&
