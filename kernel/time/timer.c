@@ -1967,6 +1967,25 @@ void msleep(unsigned int msecs)
 EXPORT_SYMBOL(msleep);
 
 /**
+ * msleep_idle - sleep safely even with waitqueue interruptions, without
+ * counting towards the load average
+ * @msecs: Time in milliseconds to sleep for
+ *
+ * Like msleep(), for kernel threads that poll or wait in a loop: the sleeping
+ * task is in TASK_IDLE, which neither counts as load nor trips the hung task
+ * detector.
+ */
+void msleep_idle(unsigned int msecs)
+{
+	unsigned long timeout = msecs_to_jiffies(msecs) + 1;
+
+	while (timeout)
+		timeout = schedule_timeout_idle(timeout);
+}
+
+EXPORT_SYMBOL(msleep_idle);
+
+/**
  * msleep_interruptible - sleep waiting for signals
  * @msecs: Time in milliseconds to sleep for
  */
@@ -1992,16 +2011,36 @@ EXPORT_SYMBOL(msleep_interruptible);
  * power usage by allowing hrtimers to take advantage of an already-
  * scheduled interrupt instead of scheduling a new one just for this sleep.
  */
-void __sched usleep_range(unsigned long min, unsigned long max)
+static void __sched usleep_range_state(unsigned long min, unsigned long max,
+					unsigned int state)
 {
 	ktime_t exp = ktime_add_us(ktime_get(), min);
 	u64 delta = (u64)(max - min) * NSEC_PER_USEC;
 
 	for (;;) {
-		__set_current_state(TASK_UNINTERRUPTIBLE);
+		__set_current_state(state);
 		/* Do not return before the requested sleep time has elapsed */
 		if (!schedule_hrtimeout_range(&exp, delta, HRTIMER_MODE_ABS))
 			break;
 	}
 }
+
+void __sched usleep_range(unsigned long min, unsigned long max)
+{
+	usleep_range_state(min, max, TASK_UNINTERRUPTIBLE);
+}
 EXPORT_SYMBOL(usleep_range);
+
+/**
+ * usleep_idle_range - Sleep for an approximate time in TASK_IDLE
+ * @min: Minimum time in usecs to sleep
+ * @max: Maximum time in usecs to sleep
+ *
+ * Like usleep_range(), but the sleeping task does not count towards the load
+ * average (as usleep_idle_range() in Linux 5.16 and later).
+ */
+void __sched usleep_idle_range(unsigned long min, unsigned long max)
+{
+	usleep_range_state(min, max, TASK_IDLE);
+}
+EXPORT_SYMBOL(usleep_idle_range);
