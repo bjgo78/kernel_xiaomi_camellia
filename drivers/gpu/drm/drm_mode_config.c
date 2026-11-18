@@ -143,6 +143,14 @@ int drm_mode_getresources(struct drm_device *dev, void *data,
 	count = 0;
 	connector_id = u64_to_user_ptr(card_res->connector_id_ptr);
 	drm_for_each_connector_iter(connector, &conn_iter) {
+		/*
+		 * Writeback connectors are capture paths, not displays. This
+		 * kernel has no DRM_CLIENT_CAP_WRITEBACK_CONNECTORS for clients
+		 * to ask for them, so hide them from every client, like later
+		 * kernels do for clients that do not set the cap.
+		 */
+		if (connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK)
+			continue;
 		if (count < card_res->count_connectors &&
 		    put_user(connector->base.id, connector_id + count)) {
 			drm_connector_list_iter_end(&conn_iter);
